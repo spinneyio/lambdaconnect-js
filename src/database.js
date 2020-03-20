@@ -1,14 +1,16 @@
 //@flow
 
 import Dexie from 'dexie';
+import 'dexie-observable';
 import ViewModel from './view-model';
 import type {Binding, ViewModelReducer} from './view-model';
-import {combineReducers, ReducersMapObject} from 'redux';
+import {combineReducers, ReducersMapObject, Store} from 'redux';
 
 export default class Database {
   dao: Dexie;
   registeredViewModels: Map<string, ViewModel>;
   viewModels: ViewModel[];
+  store: Store;
 
   constructor() {
     this.dao = new Dexie('lambdaconnect');
@@ -16,8 +18,18 @@ export default class Database {
     this.viewModels = [];
   }
 
-  async initialize() : Promise<void> {
+  async initialize(store: Store) : Promise<void> {
+    this.store = store;
     this.dao.version(1);
+    this.dao.on('changes', (changes, partial) => {
+      if (partial) {
+        return;
+      }
+      this.registeredViewModels.forEach((viewModel: ViewModel) => {
+        this.store.dispatch(viewModel.getReloadAction());
+      });
+    });
+
     await this.dao.open();
   }
 
@@ -38,10 +50,11 @@ export default class Database {
     this.registeredViewModels.delete(viewModel.name);
   }
 
-  createViewModel(name: string, binding : Binding) {
+  createViewModel(name: string, binding : Binding) : ViewModel {
     const viewModel : ViewModel = new ViewModel(this, name, binding);
     this.viewModels.push(viewModel);
 
-    return viewModel
+    return viewModel;
   }
+
 }

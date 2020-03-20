@@ -14,9 +14,10 @@
   "dependencies": {
     "@babel/polyfill": "^7.8.7",
     "dexie": "^2.0.4",
+    "dexie-observable": "^1.0.0-beta.6",
     "react": "*",
-    "redux": "*",
-    "react-redux": "*"
+    "react-redux": "*",
+    "redux": "*"
   },
   "devDependencies": {
     "@babel/cli": "^7.8.4",

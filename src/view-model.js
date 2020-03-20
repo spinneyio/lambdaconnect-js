@@ -85,7 +85,7 @@ class ViewModel {
             return {
               ...state,
               pending: true,
-              parameters: action.payload,
+              parameters: action.payload || state.parameters,
             };
           case this.actions.fetchError:
             return {
