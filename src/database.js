@@ -79,13 +79,13 @@ export default class Database {
                            if (!entity.syncable) {
                              return acc;
                            }
-                           acc[entityName] = 'id++,isSuitableForPush,'
-                             + Object.keys(entity.attributes)
+                           const additionalIndexes = Object.keys(entity.attributes)
+                                     .filter((key) => entity.hasOwnProperty(key))
                                      .map(attributeName => entity.attributes[attributeName])
                                      .filter(attribute => attribute.indexed)
                                      .map(attribute => attribute.name)
                                      .join(',');
-
+                           acc[entityName] = 'id++,isSuitableForPush' + ((additionalIndexes.length > 0) ? (',' + additionalIndexes) : '');
                            return acc;
                          }, {});
 
@@ -101,8 +101,6 @@ export default class Database {
     this.store.dispatch({
       type: DATABASE_INITIALIZED,
     });
-
-
   }
 
   reloadAllViewModels() : void {
