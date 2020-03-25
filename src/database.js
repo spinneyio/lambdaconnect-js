@@ -1,10 +1,12 @@
 //@flow
 
+import Promise from 'bluebird';
 import Dexie from 'dexie';
 import 'dexie-observable';
+import type {Binding} from './view-model';
 import ViewModel from './view-model';
-import type {Binding, ViewModelReducer} from './view-model';
 import {Action, combineReducers, Reducer, ReducersMapObject, Store} from 'redux';
+import fetch from 'isomorphic-fetch';
 
 export type DatabaseState = {
   autoSync: number,
@@ -62,11 +64,30 @@ export default class Database {
   viewModels: ViewModel[];
   store: Store;
   model: DatabaseModel;
+  apiUrl: string;
+  requestHeaders: any;
 
-  constructor() {
+  constructor(apiUrl: string) {
+    this.apiUrl = apiUrl;
     this.dao = new Dexie('lambdaconnect', {autoOpen: false});
     this.registeredViewModels = new Map<string, ViewModel>();
     this.viewModels = [];
+  }
+
+  setRequestHeaders(headers: any) : void {
+    this.requestHeaders = headers;
+  }
+
+  makeServerRequest(path: string, method : string = 'GET', headers?: any, body?: any) : Promise<any> {
+    return fetch(`${this.apiUrl}/${path}`, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        ...this.requestHeaders,
+        ...headers,
+      },
+      body: typeof body === 'object' ? JSON.stringify(body): body,
+    });
   }
 
   async initialize(model: DatabaseModel, store: Store) : Promise<void> {
@@ -79,13 +100,13 @@ export default class Database {
                            if (!entity.syncable) {
                              return acc;
                            }
-                           const additionalIndexes = Object.keys(entity.attributes)
-                                     .filter((key) => entity.hasOwnProperty(key))
-                                     .map(attributeName => entity.attributes[attributeName])
-                                     .filter(attribute => attribute.indexed)
-                                     .map(attribute => attribute.name)
-                                     .join(',');
-                           acc[entityName] = 'id++,isSuitableForPush' + ((additionalIndexes.length > 0) ? (',' + additionalIndexes) : '');
+                           acc[entityName] = Object.keys(entity.attributes)
+                                                   .filter((key) => entity.hasOwnProperty(key))
+                                                   .map(attributeName => entity.attributes[attributeName])
+                                                   .filter(attribute => attribute.indexed)
+                                                   .map(attribute => attribute.name)
+                                                   .concat(['id++', 'uuid', 'isSuitableForPush', 'syncRevision'])
+                                                   .join(',');
                            return acc;
                          }, {});
 
@@ -100,6 +121,47 @@ export default class Database {
     await this.dao.open();
     this.store.dispatch({
       type: DATABASE_INITIALIZED,
+    });
+  }
+
+  async sync() : Promise<void> {
+    this.store.dispatch({
+        type: DATABASE_SYNC_IN_PROGRESS,
+    });
+
+    const entityLastRevisions = {};
+    await Promise.mapSeries(Object.keys(this.model.entities), async (entityName) => {
+      entityLastRevisions[entityName] = ((await this.dao.table(entityName).orderBy('syncRevision').last()) || {}).syncRevision || 0;
+    });
+
+    console.log(entityLastRevisions);
+
+    const pullResponse = await this.makeServerRequest('lambdaconnect/pull', 'POST', {}, entityLastRevisions);
+    if (pullResponse.status !== 200) {
+      this.store.dispatch({
+        type: DATABASE_SYNC_ERROR,
+        payload: pullResponse.status,
+      });
+      throw new Error('Error while pulling data from server: ' + pullResponse.status);
+    }
+
+    const body = await pullResponse.json();
+    const data = JSON.parse(body.data);
+    console.log(data);
+
+    Object.keys(data).forEach((entityName) => {
+      this.dao.table(entityName).bulkAdd(data[entityName]);
+    });
+
+    this.store.dispatch({
+      type: DATABASE_SYNC_FINISHED,
+    });
+    this.reloadAllViewModels();
+  }
+
+  async truncate() : Promise<void> {
+    await Promise.mapSeries(Object.keys(this.model.entities), (entityName) => {
+      return this.dao.table(entityName).clear();
     });
   }
 
