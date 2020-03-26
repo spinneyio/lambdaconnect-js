@@ -8,16 +8,12 @@ export default function(viewModels: ViewModel[]) : UseViewModelHOC {
     return (component: React.AbstractComponent<any>) => {
       return class extends React.Component<any> {
         componentDidMount(): * {
-          super.componentDidMount();
-
           viewModels.forEach((viewModel: ViewModel) => {
             viewModel.mount();
           });
         }
 
         componentWillUnmount(): * {
-          super.componentWillUnmount();
-
           viewModels.forEach((viewModel: ViewModel) => {
             viewModel.unmount();
           });

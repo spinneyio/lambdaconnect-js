@@ -112,13 +112,16 @@ export default class Database {
 
     this.dao.version(this.model.version).stores(schema);
     this.dao.on('changes', (changes, partial) => {
-      if (partial) {
+      if (partial || changes.length === 0) {
         return;
       }
+      console.log('Detected db change, reloading');
+      //todo: reload optimizations should be based on changes
       this.reloadAllViewModels();
     });
 
     await this.dao.open();
+    //todo: reconsider database initialization within redux perist rehydrate
     this.store.dispatch({
       type: DATABASE_INITIALIZED,
     });
@@ -166,8 +169,13 @@ export default class Database {
   }
 
   reloadAllViewModels() : void {
+    if (!this.dao.isOpen()) {
+      console.warn('Database still not opened, aborting reload');
+    }
+    console.log('Reloading all registered view models: ' + this.registeredViewModels.size);
+    const dispatch = this.store.dispatch;
     this.registeredViewModels.forEach((viewModel: ViewModel) => {
-      this.store.dispatch(viewModel.getReloadAction());
+      viewModel.getReloadAction()(dispatch);
     });
   }
 
@@ -219,10 +227,16 @@ export default class Database {
   }
 
   registerViewModel(viewModel: ViewModel) {
+    console.log('Registered viewModel ' + viewModel.name);
     this.registeredViewModels.set(viewModel.name, viewModel);
+    if (this.store) {
+      //todo: maybe a query-revision comparison to optimize query calls?
+      viewModel.getReloadAction()(this.store.dispatch);
+    }
   }
 
   unregisterViewModel(viewModel: ViewModel) {
+    console.log('Unregistered viewModel ' + viewModel.name);
     this.registeredViewModels.delete(viewModel.name);
   }
 
