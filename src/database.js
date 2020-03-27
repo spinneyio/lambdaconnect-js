@@ -9,7 +9,6 @@ import {Action, combineReducers, Reducer, ReducersMapObject, Store} from 'redux'
 import fetch from 'isomorphic-fetch';
 
 export type DatabaseState = {
-  autoSync: number,
   status: 'uninitialized' | 'offline' | 'online',
   lastSynchronization: number,
   inProgress: bool,
@@ -44,14 +43,26 @@ export type DatabaseModelEntityAttribute = {
   indexed: true,
 };
 
+export type DatabaseOptions = {
+  apiUrl: string,
+  autoSync: number,
+  pushPath: string,
+  pullPath: string,
+}
+
+export type DatabaseInitOptions = {
+  apiUrl: string,
+  autoSync?: number,
+  pushPath?: string,
+  pullPath?: string,
+};
+
 const DATABASE_INITIALIZED = 'DATABASE_INITIALIZED';
 const DATABASE_SYNC_IN_PROGRESS = 'DATABASE_SYNC_IN_PROGRESS';
 const DATABASE_SYNC_FINISHED = 'DATABASE_SYNC_FINISHED';
 const DATABASE_SYNC_ERROR = 'DATABASE_SYNC_ERROR';
-const DATABASE_SET_AUTOSYNC = 'DATABASE_SET_AUTOSYNC';
 
 const initState : DatabaseState = {
-  autoSync: 10,
   status: 'uninitialized',
   lastSynchronization: 0,
   inProgress: false,
@@ -64,11 +75,18 @@ export default class Database {
   viewModels: ViewModel[];
   store: Store;
   model: DatabaseModel;
-  apiUrl: string;
+  options: DatabaseOptions;
   requestHeaders: any;
+  syncInProgress: boolean;
 
-  constructor(apiUrl: string) {
-    this.apiUrl = apiUrl;
+  constructor(options: DatabaseInitOptions) {
+    this.options = {
+      autoSync: 0,
+      pushPath: 'lambdaconnect/push',
+      pullPath: 'lambdaconnect/pull',
+      ...options,
+    };
+    this.syncInProgress = false;
     this.dao = new Dexie('lambdaconnect', {autoOpen: false});
     this.registeredViewModels = new Map<string, ViewModel>();
     this.viewModels = [];
@@ -79,7 +97,7 @@ export default class Database {
   }
 
   makeServerRequest(path: string, method : string = 'GET', headers?: any, body?: any) : Promise<any> {
-    return fetch(`${this.apiUrl}/${path}`, {
+    return fetch(`${this.options.apiUrl}/${path}`, {
       method,
       headers: {
         'Content-Type': 'application/json',
@@ -103,14 +121,16 @@ export default class Database {
                            acc[entityName] = Object.keys(entity.attributes)
                                                    .filter((key) => entity.hasOwnProperty(key))
                                                    .map(attributeName => entity.attributes[attributeName])
-                                                   .filter(attribute => attribute.indexed)
+                                                   .filter(attribute => attribute.indexed && attribute.name !== 'uuid')
                                                    .map(attribute => attribute.name)
-                                                   .concat(['id++', 'uuid', 'isSuitableForPush', 'syncRevision'])
+                                                   .concat(['$$uuid', 'isSuitableForPush', 'syncRevision'])
                                                    .join(',');
                            return acc;
                          }, {});
 
     this.dao.version(this.model.version).stores(schema);
+
+    // changes listener (cross-tab observable)
     this.dao.on('changes', (changes, partial) => {
       if (partial || changes.length === 0) {
         return;
@@ -120,18 +140,73 @@ export default class Database {
       this.reloadAllViewModels();
     });
 
+    // isSuitableForPush hooks
+    const createHook = (primaryKey, object) => {
+      if (!this.syncInProgress) {
+        object.isSuitableForPush = true;
+      }
+    };
+    const updateHook = () => {
+      if (!this.syncInProgress) {
+        return {
+          isSuitableForPush: true,
+        };
+      }
+    };
+
+    for (const entityName of Object.keys(model.entities)) {
+      this.dao.table(entityName).hook('creating', createHook);
+      this.dao.table(entityName).hook('updating', updateHook);
+      // todo: deletion hook
+    }
+
     await this.dao.open();
-    //todo: reconsider database initialization within redux perist rehydrate
+    //todo: reconsider database initialization within redux persist rehydrate
     this.store.dispatch({
       type: DATABASE_INITIALIZED,
     });
+
+    if (this.options.autoSync > 0) {
+      setInterval(() => {
+        this.sync()
+          .then(() => {
+            console.log('Autosync completed');
+          })
+          .catch((error) => {
+            console.error('Autosync failed', error);
+          });
+      }, 1000 * this.options.autoSync);
+    }
   }
 
-  async sync() : Promise<void> {
-    this.store.dispatch({
-        type: DATABASE_SYNC_IN_PROGRESS,
+  async _sync_push() : Promise<void> {
+    const entitiesToPush = {};
+    await Promise.mapSeries(Object.keys(this.model.entities), async (entityName) => {
+      const entities = await this.dao.table(entityName).where('isSuitableForPush').equals(true).toArray();
+      if (entities.length === 0) {
+        return;
+      }
+      entitiesToPush[entityName] = entities;
     });
+    if (Object.keys(entitiesToPush).length > 0) {
+      const pushResponse = await this.makeServerRequest(this.options.pushPath, 'POST', null, entitiesToPush);
+      if (pushResponse.status !== 200) {
+        throw new Error('Error while pushing data to server: ' + pushResponse.status);
+      }
 
+      // update isSuitableForPush fields
+      await Promise.mapSeries(Object.keys(entitiesToPush), async (entityName) => {
+        const entities = entitiesToPush[entityName];
+        // iterating instead of mapping due to performance optimization
+        for (const entity of entities) {
+          entity.isSuitableForPush = false
+        }
+        await this.dao.table(entityName).bulkPut((entities));
+      });
+    }
+  }
+
+  async _sync_pull() : Promise<void> {
     const entityLastRevisions = {};
     await Promise.mapSeries(Object.keys(this.model.entities), async (entityName) => {
       entityLastRevisions[entityName] = ((await this.dao.table(entityName).orderBy('syncRevision').last()) || {}).syncRevision || 0;
@@ -139,12 +214,8 @@ export default class Database {
 
     console.log(entityLastRevisions);
 
-    const pullResponse = await this.makeServerRequest('lambdaconnect/pull', 'POST', {}, entityLastRevisions);
+    const pullResponse = await this.makeServerRequest(this.options.pullPath, 'POST', {}, entityLastRevisions);
     if (pullResponse.status !== 200) {
-      this.store.dispatch({
-        type: DATABASE_SYNC_ERROR,
-        payload: pullResponse.status,
-      });
       throw new Error('Error while pulling data from server: ' + pullResponse.status);
     }
 
@@ -153,13 +224,37 @@ export default class Database {
     console.log(data);
 
     Object.keys(data).forEach((entityName) => {
-      this.dao.table(entityName).bulkAdd(data[entityName]);
-    });
+      const entities = data[entityName];
+      for (const entity of entities) {
+        entity.isSuitableForPush = 0;
+      }
 
-    this.store.dispatch({
-      type: DATABASE_SYNC_FINISHED,
+      this.dao.table(entityName).bulkPut(entities);
     });
-    this.reloadAllViewModels();
+  }
+
+  async sync() : Promise<void> {
+    this.store.dispatch({
+        type: DATABASE_SYNC_IN_PROGRESS,
+    });
+    this.syncInProgress = true;
+    try {
+      await this._sync_push();
+      await this._sync_pull();
+
+      this.syncInProgress = false;
+      this.store.dispatch({
+        type: DATABASE_SYNC_FINISHED,
+      });
+      this.reloadAllViewModels();
+    } catch (error) {
+      this.syncInProgress = false;
+      this.store.dispatch({
+        type: DATABASE_SYNC_ERROR,
+        payload: error,
+      });
+      throw error;
+    }
   }
 
   async truncate() : Promise<void> {
@@ -205,11 +300,6 @@ export default class Database {
             inProgress: false,
             error: action.payload,
             status: 'offline',
-          };
-        case DATABASE_SET_AUTOSYNC:
-          return {
-            ...state,
-            autoSync: action.payload,
           };
         default:
           return state;
