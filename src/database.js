@@ -3,10 +3,13 @@
 import Promise from 'bluebird';
 import Dexie from 'dexie';
 import 'dexie-observable';
-import type {Binding} from './view-model';
-import ViewModel from './view-model';
 import {Action, combineReducers, Reducer, ReducersMapObject, Store} from 'redux';
 import fetch from 'isomorphic-fetch';
+import type {Binding} from './view-model';
+import ViewModel from './view-model';
+import hashCode from './utils/hashCode';
+import modelParser from './utils/modelParser';
+import type {DatabaseModel} from './utils/modelParser';
 
 export type DatabaseState = {
   status: 'uninitialized' | 'offline' | 'online',
@@ -20,34 +23,12 @@ export type DatabaseAction = {
   payload: ?mixed,
 }
 
-export type DatabaseModel = {
-  version: number,
-  entities: {
-    [string]: DatabaseModelEntity,
-  },
-};
-
-export type DatabaseModelEntity = {
-  name: string,
-  syncable: boolean,
-  attributes: {
-    [string]: DatabaseModelEntityAttribute,
-  },
-};
-
-export type DatabaseModelEntityAttribute = {
-  name: string,
-  optional: boolean,
-  attributeType: string,
-  syncable: boolean,
-  indexed: true,
-};
-
 export type DatabaseOptions = {
   apiUrl: string,
   autoSync: number,
   pushPath: string,
   pullPath: string,
+  dataModelPath: string,
 }
 
 export type DatabaseInitOptions = {
@@ -55,12 +36,16 @@ export type DatabaseInitOptions = {
   autoSync?: number,
   pushPath?: string,
   pullPath?: string,
+  dataModelPath?: string,
 };
 
 const DATABASE_INITIALIZED = 'DATABASE_INITIALIZED';
 const DATABASE_SYNC_IN_PROGRESS = 'DATABASE_SYNC_IN_PROGRESS';
 const DATABASE_SYNC_FINISHED = 'DATABASE_SYNC_FINISHED';
 const DATABASE_SYNC_ERROR = 'DATABASE_SYNC_ERROR';
+
+const LOCALSTORAGE_MODEL_HASH_KEY = 'lambdaconnect_model_hash';
+const DATABASE_NAME = 'lambdaconnect';
 
 const initState : DatabaseState = {
   status: 'uninitialized',
@@ -78,18 +63,21 @@ export default class Database {
   options: DatabaseOptions;
   requestHeaders: any;
   syncInProgress: boolean;
+  isInitialized: boolean;
 
   constructor(options: DatabaseInitOptions) {
     this.options = {
       autoSync: 0,
       pushPath: 'lambdaconnect/push',
       pullPath: 'lambdaconnect/pull',
+      dataModelPath: 'data-model',
       ...options,
     };
     this.syncInProgress = false;
-    this.dao = new Dexie('lambdaconnect', {autoOpen: false});
+    this.dao = new Dexie(DATABASE_NAME, {autoOpen: false});
     this.registeredViewModels = new Map<string, ViewModel>();
     this.viewModels = [];
+    this.isInitialized = false;
   }
 
   setRequestHeaders(headers: any) : void {
@@ -108,13 +96,36 @@ export default class Database {
     });
   }
 
-  async initialize(model: DatabaseModel, store: Store) : Promise<void> {
-    this.model = model;
+  setReduxStore(store: Store) : void {
     this.store = store;
+  }
 
-    const schema = Object.keys(model.entities)
+  async initialize() : Promise<void> {
+    if (!this.store) {
+      throw new Error('Redux store is not set');
+    }
+
+    // download current data model
+    // todo: it is worth to implement calculating schema hash on the server-side
+    const modelResponse: {model: string} = await (await this.makeServerRequest(this.options.dataModelPath)).json();
+
+    // check if data model is up to date
+    const currentSchemaHash: number = Number(window.localStorage.getItem(LOCALSTORAGE_MODEL_HASH_KEY));
+    const receivedSchemaHash: number = hashCode(modelResponse.model);
+    if (currentSchemaHash !== receivedSchemaHash && currentSchemaHash) {
+      // if not - wipe out the whole database if exist
+      //todo: reconsider migrations (either with server-side counting or local storage version counter)
+      console.log('Truncating the whole database because of model version change');
+      await this.dao.open();
+      await this.dao.delete();
+      await this.dao.close();
+    }
+
+    this.model = modelParser(modelResponse.model);
+    console.log(this.model);
+    const schema = Object.keys(this.model.entities)
                          .reduce((acc, entityName) => {
-                           const entity = model.entities[entityName];
+                           const entity = this.model.entities[entityName];
                            if (!entity.syncable) {
                              return acc;
                            }
@@ -154,17 +165,21 @@ export default class Database {
       }
     };
 
-    for (const entityName of Object.keys(model.entities)) {
+    for (const entityName of Object.keys(this.model.entities)) {
       this.dao.table(entityName).hook('creating', createHook);
       this.dao.table(entityName).hook('updating', updateHook);
       // todo: deletion hook
     }
 
     await this.dao.open();
+    // save received model hash as current
+    window.localStorage.setItem(LOCALSTORAGE_MODEL_HASH_KEY, receivedSchemaHash);
+
     //todo: reconsider database initialization within redux persist rehydrate
     this.store.dispatch({
       type: DATABASE_INITIALIZED,
     });
+    this.isInitialized = true;
 
     if (this.options.autoSync > 0) {
       setInterval(() => {
@@ -239,7 +254,7 @@ export default class Database {
     });
     this.syncInProgress = true;
     try {
-      await this._sync_push();
+      // await this._sync_push();
       await this._sync_pull();
 
       this.syncInProgress = false;
@@ -319,7 +334,7 @@ export default class Database {
   registerViewModel(viewModel: ViewModel) {
     console.log('Registered viewModel ' + viewModel.name);
     this.registeredViewModels.set(viewModel.name, viewModel);
-    if (this.store) {
+    if (this.isInitialized) {
       //todo: maybe a query-revision comparison to optimize query calls?
       viewModel.getReloadAction()(this.store.dispatch);
     }
