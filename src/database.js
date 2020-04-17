@@ -15,6 +15,7 @@ export type DatabaseState = {
   status: 'uninitialized' | 'offline' | 'online',
   lastSynchronization: number,
   inProgress: bool,
+  progressPercent: number,
   error: any,
 }
 
@@ -29,6 +30,7 @@ export type DatabaseOptions = {
   pushPath: string,
   pullPath: string,
   dataModelPath: string,
+  bulkPutLimit: number,
 }
 
 export type DatabaseInitOptions = {
@@ -37,6 +39,7 @@ export type DatabaseInitOptions = {
   pushPath?: string,
   pullPath?: string,
   dataModelPath?: string,
+  bulkPutLimit?: number,
 };
 
 const DATABASE_INITIALIZED = 'DATABASE_INITIALIZED';
@@ -51,6 +54,7 @@ const initState : DatabaseState = {
   status: 'uninitialized',
   lastSynchronization: 0,
   inProgress: false,
+  progressPercent: 0,
   error: null,
 };
 
@@ -71,6 +75,7 @@ export default class Database {
       pushPath: 'lambdaconnect/push',
       pullPath: 'lambdaconnect/pull',
       dataModelPath: 'data-model',
+      bulkPutLimit: 1000,
       ...options,
     };
     this.syncInProgress = false;
@@ -100,9 +105,16 @@ export default class Database {
     this.store = store;
   }
 
-  async initialize() : Promise<void> {
+  async initialize({
+                      truncate = false,
+                   } : { truncate: boolean }) : Promise<void> {
     if (!this.store) {
       throw new Error('Redux store is not set');
+    }
+
+    if (truncate) {
+      console.log('Deleting database!');
+      await this.dao.delete();
     }
 
     // download current data model
@@ -116,8 +128,14 @@ export default class Database {
       // if not - wipe out the whole database if exist
       //todo: reconsider migrations (either with server-side counting or local storage version counter)
       console.log('Truncating the whole database because of model version change');
-      await this.dao.open();
+      if (!this.dao.isOpen()) {
+        await this.dao.open();
+      }
       await this.dao.delete();
+      await this.dao.close();
+    }
+
+    if (this.dao.isOpen()) {
       await this.dao.close();
     }
 
@@ -143,7 +161,7 @@ export default class Database {
 
     // changes listener (cross-tab observable)
     this.dao.on('changes', (changes, partial) => {
-      if (partial || changes.length === 0) {
+      if (this.syncInProgress || partial || changes.length === 0) {
         return;
       }
       console.log('Detected db change, reloading');
@@ -152,13 +170,13 @@ export default class Database {
     });
 
     // isSuitableForPush hooks
-    const createHook = (primaryKey, object) => {
-      if (!this.syncInProgress) {
+    const createHook = (primaryKey, object, transaction) => {
+      if (!transaction.__syncTransaction) {
         object.isSuitableForPush = true;
       }
     };
-    const updateHook = () => {
-      if (!this.syncInProgress) {
+    const updateHook = (modifications, primKey, obj, transaction) => {
+      if (!transaction.__syncTransaction) {
         return {
           isSuitableForPush: true,
         };
@@ -194,7 +212,53 @@ export default class Database {
     }
   }
 
-  async _sync_push() : Promise<void> {
+  _publishSyncProgress(percent: number) {
+    console.log(`progress: ${percent}`);
+    this.store.dispatch({
+      type: DATABASE_SYNC_IN_PROGRESS,
+      payload: {percent},
+    });
+  }
+
+  async _monitoredBulkPut(entitiesToPush: {[string]: [{isSuitableForPush: boolean}]}, progressScale: number, progressOffset: number) {
+    const totalRecords = Object.keys(entitiesToPush)
+                               .reduce((acc, entityName) => acc + entitiesToPush[entityName].length, 0);
+    let processedRecords = 0;
+    const progressInterval = setInterval(() => {
+      const percent = (processedRecords*progressScale/totalRecords) + progressOffset;
+      this._publishSyncProgress(percent);
+    }, 500);
+
+    try {
+      await this.dao.transaction(
+        'rw!',
+        Object.keys(entitiesToPush).map((entityName) => this.dao.table(entityName)),
+        async () => {
+          Dexie.currentTransaction.__syncTransaction = true;
+
+          for (const entityName of Object.keys(entitiesToPush)) {
+            const entities = entitiesToPush[entityName];
+
+            for (let currentStart = 0; currentStart < entities.length; currentStart += this.options.bulkPutLimit) {
+              const entitiesSlice = entities.slice(currentStart, currentStart + this.options.bulkPutLimit);
+
+              for (const entity of entitiesSlice) {
+                entity.isSuitableForPush = false
+              }
+
+              await this.dao.table(entityName).bulkPut((entitiesSlice));
+
+              processedRecords += entitiesSlice.length;
+            }
+          }
+        });
+    } finally {
+      clearInterval(progressInterval);
+    }
+  }
+
+  async _syncPush() : Promise<void> {
+    this._publishSyncProgress(0);
     const entitiesToPush = {};
     await Promise.mapSeries(Object.keys(this.model.entities), async (entityName) => {
       const entities = await this.dao.table(entityName).where('isSuitableForPush').equals(true).toArray();
@@ -209,19 +273,12 @@ export default class Database {
         throw new Error('Error while pushing data to server: ' + pushResponse.status);
       }
 
-      // update isSuitableForPush fields
-      await Promise.mapSeries(Object.keys(entitiesToPush), async (entityName) => {
-        const entities = entitiesToPush[entityName];
-        // iterating instead of mapping due to performance optimization
-        for (const entity of entities) {
-          entity.isSuitableForPush = false
-        }
-        await this.dao.table(entityName).bulkPut((entities));
-      });
+      await this._monitoredBulkPut(entitiesToPush, 25, 25);
     }
   }
 
-  async _sync_pull() : Promise<void> {
+  async _syncPull() : Promise<void> {
+    this._publishSyncProgress(50);
     const entityLastRevisions = {};
     await Promise.mapSeries(Object.keys(this.model.entities), async (entityName) => {
       entityLastRevisions[entityName] = ((await this.dao.table(entityName).orderBy('syncRevision').last()) || {}).syncRevision || 0;
@@ -236,26 +293,15 @@ export default class Database {
 
     const body = await pullResponse.json();
     const data = JSON.parse(body.data);
-    console.log(data);
 
-    Object.keys(data).forEach((entityName) => {
-      const entities = data[entityName];
-      for (const entity of entities) {
-        entity.isSuitableForPush = 0;
-      }
-
-      this.dao.table(entityName).bulkPut(entities);
-    });
+    await this._monitoredBulkPut(data, 25, 75);
   }
 
   async sync() : Promise<void> {
-    this.store.dispatch({
-        type: DATABASE_SYNC_IN_PROGRESS,
-    });
     this.syncInProgress = true;
     try {
       // await this._sync_push();
-      await this._sync_pull();
+      await this._syncPull();
 
       this.syncInProgress = false;
       this.store.dispatch({
@@ -301,6 +347,7 @@ export default class Database {
           return {
             ...state,
             inProgress: true,
+            progressPercent: action.payload.percent,
           };
         case DATABASE_SYNC_FINISHED:
           return {
