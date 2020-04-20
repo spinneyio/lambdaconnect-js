@@ -23,6 +23,7 @@ class ViewModel {
   mountCount : number;
   name: string;
   initialParameters: mixed;
+  _parameters: mixed;
   actions: {
     fetchPending: string,
     fetchSuccess: string,
@@ -36,6 +37,7 @@ class ViewModel {
     this.binding = binding;
     this.mountCount = 0;
     this.initialParameters = initialParameters;
+    this._parameters = initialParameters;
 
     const actionInterfix = name.toUpperCase();
 
@@ -62,7 +64,7 @@ class ViewModel {
         type: this.actions.fetchPending,
         payload: parameters,
       });
-      this.reload(parameters)
+      this.reload(this._parameters)
         .then((result: BindingResult) => {
           dispatch({
             type: this.actions.fetchSuccess,
@@ -82,10 +84,13 @@ class ViewModel {
       return (state: ViewModelState = this.initialState, action: ViewModelAction) => {
         switch (action.type) {
           case this.actions.fetchPending:
+
+            // not elegant but makes us independent from direct subscribes from the store (allows user to create redux structure as he likes)
+            this._parameters = action.payload || state.parameters;
             return {
               ...state,
               pending: true,
-              parameters: action.payload || state.parameters,
+              parameters: this._parameters,
             };
           case this.actions.fetchError:
             return {
@@ -101,6 +106,7 @@ class ViewModel {
               result: action.payload,
             };
           default:
+            this._parameters = state.parameters;
             return state;
         }
       };

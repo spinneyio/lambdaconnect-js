@@ -42,6 +42,10 @@ export type DatabaseInitOptions = {
   bulkPutLimit?: number,
 };
 
+export type DatabaseInitializationOptions = {
+  truncate?: boolean,
+};
+
 const DATABASE_INITIALIZED = 'DATABASE_INITIALIZED';
 const DATABASE_SYNC_IN_PROGRESS = 'DATABASE_SYNC_IN_PROGRESS';
 const DATABASE_SYNC_FINISHED = 'DATABASE_SYNC_FINISHED';
@@ -105,14 +109,12 @@ export default class Database {
     this.store = store;
   }
 
-  async initialize({
-                      truncate = false,
-                   } : { truncate: boolean }) : Promise<void> {
+  async initialize(options?: DatabaseInitializationOptions) : Promise<void> {
     if (!this.store) {
       throw new Error('Redux store is not set');
     }
 
-    if (truncate) {
+    if (options && options.truncate) {
       console.log('Deleting database!');
       await this.dao.delete();
     }
@@ -138,6 +140,7 @@ export default class Database {
     if (this.dao.isOpen()) {
       await this.dao.close();
     }
+
 
     this.model = modelParser(modelResponse.model);
     console.log(this.model);
@@ -172,13 +175,13 @@ export default class Database {
     // isSuitableForPush hooks
     const createHook = (primaryKey, object, transaction) => {
       if (!transaction.__syncTransaction) {
-        object.isSuitableForPush = true;
+        object.isSuitableForPush = 1;
       }
     };
     const updateHook = (modifications, primKey, obj, transaction) => {
       if (!transaction.__syncTransaction) {
         return {
-          isSuitableForPush: true,
+          isSuitableForPush: 1,
         };
       }
     };
@@ -261,12 +264,13 @@ export default class Database {
     this._publishSyncProgress(0);
     const entitiesToPush = {};
     await Promise.mapSeries(Object.keys(this.model.entities), async (entityName) => {
-      const entities = await this.dao.table(entityName).where('isSuitableForPush').equals(true).toArray();
+      const entities = await this.dao.table(entityName).where('isSuitableForPush').equals(1).toArray();
       if (entities.length === 0) {
         return;
       }
       entitiesToPush[entityName] = entities;
     });
+    console.log('Entities to sync via push', entitiesToPush);
     if (Object.keys(entitiesToPush).length > 0) {
       const pushResponse = await this.makeServerRequest(this.options.pushPath, 'POST', null, entitiesToPush);
       if (pushResponse.status !== 200) {
@@ -300,7 +304,7 @@ export default class Database {
   async sync() : Promise<void> {
     this.syncInProgress = true;
     try {
-      // await this._sync_push();
+      await this._syncPush();
       await this._syncPull();
 
       this.syncInProgress = false;
@@ -392,8 +396,8 @@ export default class Database {
     this.registeredViewModels.delete(viewModel.name);
   }
 
-  createViewModel(name: string, binding : Binding) : ViewModel {
-    const viewModel : ViewModel = new ViewModel(this, name, binding);
+  createViewModel(name: string, binding : Binding, initialParameters? : mixed) : ViewModel {
+    const viewModel : ViewModel = new ViewModel(this, name, binding, initialParameters);
     this.viewModels.push(viewModel);
 
     return viewModel;
