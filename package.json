@@ -27,7 +27,8 @@
     "dexie-observable": "^1.0.0-beta.6",
     "fast-xml-parser": "^3.16.0",
     "he": "^1.2.0",
-    "isomorphic-fetch": "^2.2.1"
+    "isomorphic-fetch": "^2.2.1",
+    "uuid": "^7.0.3"
   },
   "peerDependencies": {
     "react": "*",

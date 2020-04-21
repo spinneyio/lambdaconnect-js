@@ -5,6 +5,8 @@ import Dexie from 'dexie';
 import 'dexie-observable';
 import {Action, combineReducers, Reducer, ReducersMapObject, Store} from 'redux';
 import fetch from 'isomorphic-fetch';
+import {v1 as uuid} from 'uuid';
+
 import type {Binding} from './view-model';
 import ViewModel from './view-model';
 import hashCode from './utils/hashCode';
@@ -155,7 +157,7 @@ export default class Database {
                                                    .map(attributeName => entity.attributes[attributeName])
                                                    .filter(attribute => attribute.indexed && attribute.name !== 'uuid')
                                                    .map(attribute => attribute.name)
-                                                   .concat(['$$uuid', 'isSuitableForPush', 'syncRevision'])
+                                                   .concat(['$$uuid', 'createdAt', 'updatedAt', 'isSuitableForPush', 'syncRevision'])
                                                    .join(',');
                            return acc;
                          }, {});
@@ -176,12 +178,18 @@ export default class Database {
     const createHook = (primaryKey, object, transaction) => {
       if (!transaction.__syncTransaction) {
         object.isSuitableForPush = 1;
+        object.uuid = uuid();
+        object.createdAt = object.updatedAt = new Date().toISOString();
+        object.active = 1;
+        return object.uuid;
       }
     };
     const updateHook = (modifications, primKey, obj, transaction) => {
       if (!transaction.__syncTransaction) {
         return {
           isSuitableForPush: 1,
+          updatedAt: new Date().toISOString(),
+          active: 1,
         };
       }
     };
@@ -268,16 +276,30 @@ export default class Database {
       if (entities.length === 0) {
         return;
       }
-      entitiesToPush[entityName] = entities;
+
+      // prepare entities to be modeled within a valid schema
+      const schema = this.model.entities[entityName];
+      const attributes = Object.keys(schema.attributes).concat('uuid', 'active', 'createdAt', 'updatedAt');
+      entitiesToPush[entityName] = entities.map((entity) => {
+        const resultEntity = {};
+
+        // pick only attributes that complies to the schema
+        for (let attribute of attributes) {
+          if (typeof entity[attribute] !== 'undefined') {
+            resultEntity[attribute] = entity[attribute];
+          }
+        }
+
+        return resultEntity;
+      });
     });
+
     console.log('Entities to sync via push', entitiesToPush);
     if (Object.keys(entitiesToPush).length > 0) {
       const pushResponse = await this.makeServerRequest(this.options.pushPath, 'POST', null, entitiesToPush);
       if (pushResponse.status !== 200) {
         throw new Error('Error while pushing data to server: ' + pushResponse.status);
       }
-
-      await this._monitoredBulkPut(entitiesToPush, 25, 25);
     }
   }
 
@@ -285,7 +307,8 @@ export default class Database {
     this._publishSyncProgress(50);
     const entityLastRevisions = {};
     await Promise.mapSeries(Object.keys(this.model.entities), async (entityName) => {
-      entityLastRevisions[entityName] = ((await this.dao.table(entityName).orderBy('syncRevision').last()) || {}).syncRevision || 0;
+      const lastSyncRevision = (await this.dao.table(entityName).orderBy('syncRevision').last() || {}).syncRevision;
+      entityLastRevisions[entityName] = lastSyncRevision ? lastSyncRevision + 1 : 0;
     });
 
     console.log(entityLastRevisions);
