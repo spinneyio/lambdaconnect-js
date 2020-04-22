@@ -69,6 +69,20 @@ export default (xmlData: string) : DatabaseModel => {
       };
       entitySchema.attributes[attributeSchema.name] = attributeSchema;
     }
+
+    if (entity.relationship) {
+      for (const {attr} of Array.isArray(entity.relationship) ? entity.relationship : [entity.relationship]) {
+        const attributeSchema = {
+          name: attr['@_name'],
+          optional: attr['@_optional'] === 'YES',
+          attributeType: 'relationship',
+          syncable: attr['@_syncable'] === 'YES',
+          toMany: attr['@_toMany'] === 'YES',
+        };
+        entitySchema.attributes[attributeSchema.name] = attributeSchema;
+      }
+    }
+
     schema.entities[entitySchema.name] = entitySchema;
   }
 

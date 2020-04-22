@@ -46,6 +46,7 @@ export type DatabaseInitOptions = {
 
 export type DatabaseInitializationOptions = {
   truncate?: boolean,
+  indexes?: {[string]: [string]},
 };
 
 const DATABASE_INITIALIZED = 'DATABASE_INITIALIZED';
@@ -146,22 +147,34 @@ export default class Database {
 
     this.model = modelParser(modelResponse.model);
     console.log(this.model);
+
+    const indexes = (options && options.indexes) || {};
     const schema = Object.keys(this.model.entities)
                          .reduce((acc, entityName) => {
                            const entity = this.model.entities[entityName];
                            if (!entity.syncable) {
                              return acc;
                            }
-                           acc[entityName] = Object.keys(entity.attributes)
-                                                   .filter((key) => entity.hasOwnProperty(key))
-                                                   .map(attributeName => entity.attributes[attributeName])
-                                                   .filter(attribute => attribute.indexed && attribute.name !== 'uuid')
-                                                   .map(attribute => attribute.name)
-                                                   .concat(['$$uuid', 'createdAt', 'updatedAt', 'isSuitableForPush', 'syncRevision'])
-                                                   .join(',');
+
+                           acc[entityName] =
+                             ['$$uuid', 'createdAt', 'updatedAt', 'isSuitableForPush', 'syncRevision']
+                               .concat(Object.keys(entity.attributes)
+                                             .map(attributeName => entity.attributes[attributeName])
+                                             .filter(attribute => attribute.attributeType === 'relationship'
+                                               || (attribute.indexed && attribute.name !== 'uuid'))
+                                             .map(attribute => {
+                                               if (attribute.attributeType === 'relationship' && attribute.toMany) {
+                                                 return `*${ attribute.name }`;
+                                               }
+
+                                               return attribute.name;
+                                             })
+                                             .concat(indexes[entityName] || []))
+                               .join(',');
                            return acc;
                          }, {});
 
+    console.log(schema);
     this.dao.version(this.model.version).stores(schema);
 
     // changes listener (cross-tab observable)
