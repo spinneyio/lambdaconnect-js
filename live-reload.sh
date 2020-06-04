@@ -5,7 +5,7 @@ function build {
 }
 
 function sync {
-  rsync -av --delete --exclude 'node_modules/' --exclude 'src/' --exclude '.git/' ./ ../lambdaconnect-react-demo/node_modules/lambdaconnect-js
+  rsync -av --delete --exclude 'node_modules/' --exclude 'src/' --exclude '.git/' ./ ../nourish-web/node_modules/lambdaconnect-js
 }
 
 build

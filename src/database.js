@@ -7,7 +7,6 @@ import {Action, combineReducers, Reducer, ReducersMapObject, Store} from 'redux'
 import fetch from 'isomorphic-fetch';
 import {v1 as uuid} from 'uuid';
 
-import type {Binding} from './view-model';
 import ViewModel from './view-model';
 import hashCode from './utils/hashCode';
 import modelParser from './utils/modelParser';
@@ -375,7 +374,12 @@ export default class Database {
     });
   }
 
-  getReducer() : ReducersMapObject {
+  getReducer(viewModels: Array<ViewModel>) : ReducersMapObject {
+    this.viewModels = viewModels;
+    this.viewModels.forEach((viewModel => {
+      viewModel.initialize(this);
+    }));
+
     const databaseReducer = (state: DatabaseState = initState, action: DatabaseAction) : DatabaseState => {
       switch (action.type) {
         case DATABASE_INITIALIZED:
@@ -419,7 +423,6 @@ export default class Database {
   }
 
   registerViewModel(viewModel: ViewModel) {
-    console.log('Registered viewModel ' + viewModel.name);
     this.registeredViewModels.set(viewModel.name, viewModel);
     if (this.isInitialized) {
       //todo: maybe a query-revision comparison to optimize query calls?
@@ -428,14 +431,7 @@ export default class Database {
   }
 
   unregisterViewModel(viewModel: ViewModel) {
-    console.log('Unregistered viewModel ' + viewModel.name);
     this.registeredViewModels.delete(viewModel.name);
   }
 
-  createViewModel(name: string, binding : Binding, initialParameters? : mixed) : ViewModel {
-    const viewModel : ViewModel = new ViewModel(this, name, binding, initialParameters);
-    this.viewModels.push(viewModel);
-
-    return viewModel;
-  }
 }

@@ -19,7 +19,7 @@ export type ViewModelReducer = (state: ViewModelState, action: ViewModelAction) 
 
 class ViewModel {
   binding: Binding;
-  database: Database;
+  database: Database | null;
   mountCount : number;
   name: string;
   initialParameters: mixed;
@@ -31,8 +31,8 @@ class ViewModel {
   };
   initialState: ViewModelState;
 
-  constructor(database: Database, name: string, binding: Binding, initialParameters: mixed) {
-    this.database = database;
+  constructor(name: string, binding: Binding, initialParameters: mixed) {
+    this.database = null;
     this.name = name;
     this.binding = binding;
     this.mountCount = 0;
@@ -54,7 +54,17 @@ class ViewModel {
     };
   }
 
+  initialize(database: Database) {
+    this.database = database;
+    if (this.mountCount > 0) {
+      this.database.registerViewModel(this);
+    }
+  }
+
   reload(parameters: ?mixed) : Promise<BindingResult> {
+    if (!this.database) {
+      return Promise.reject(`Could not reload ViewModel ${this.name}: not registered`);
+    }
     return Promise.resolve(this.binding(this.database.dao, parameters))
   }
 
@@ -113,15 +123,18 @@ class ViewModel {
   }
 
   mount() {
-    if (this.mountCount === 0) {
+    if (this.mountCount === 0 && this.database) {
       this.database.registerViewModel(this);
     }
     this.mountCount += 1;
   }
 
   unmount() {
+    if (!this.database) {
+      throw new Error(`Could not mount ViewModel ${this.name}: not registered`);
+    }
     this.mountCount -= 1;
-    if (this.mountCount === 0) {
+    if (this.mountCount === 0 && this.database) {
       this.database.unregisterViewModel(this);
     }
   }
