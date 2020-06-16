@@ -291,7 +291,7 @@ export default class Database {
 
       // prepare entities to be modeled within a valid schema
       const schema = this.model.entities[entityName];
-      const attributes = Object.keys(schema.attributes).concat('uuid', 'active', 'createdAt', 'updatedAt');
+      const attributes = Object.keys(schema.attributes).concat('uuid', 'active', 'createdAt', 'updatedAt', 'syncRevision');
       entitiesToPush[entityName] = entities.map((entity) => {
         const resultEntity = {};
 
