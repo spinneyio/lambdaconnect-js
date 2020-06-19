@@ -109,6 +109,25 @@ export default class Database {
 
   setReduxStore(store: Store) : void {
     this.store = store;
+
+    const defaultEqualityFunction = (left: any, right: any): boolean => {
+      return left === right;
+    }
+
+    this.store.subscribe(() => {
+      const state = this.store.getState();
+      this.registeredViewModels.forEach((viewModel: ViewModel) => {
+        if (!viewModel.stateSelector) {
+          return;
+        }
+
+        const subState = viewModel.stateSelector(state);
+        const equalityFn = viewModel.stateSelectorEqualityFunction || defaultEqualityFunction;
+        if (!equalityFn(viewModel.lastReloadState, subState)) {
+          this.store.dispatch(viewModel.getReloadAction());
+        }
+      });
+    });
   }
 
   async initialize(options?: DatabaseInitializationOptions) : Promise<void> {

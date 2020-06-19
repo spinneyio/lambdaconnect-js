@@ -3,7 +3,7 @@ import type Dexie from 'dexie';
 import Database from './database';
 
 export type BindingResult = mixed;
-export type Binding = (dao: Dexie, properties?: mixed) => BindingResult | Promise<BindingResult>;
+export type Binding = (dao: Dexie, properties?: mixed, selectedState?: mixed) => BindingResult | Promise<BindingResult>;
 export type ViewModelState = {
   pending: boolean,
   error: mixed,
@@ -16,6 +16,9 @@ export type ViewModelAction = {
   payload?: mixed,
 };
 export type ViewModelReducer = (state: ViewModelState, action: ViewModelAction) => ViewModelState;
+
+export type StateSelector = (any) => any;
+export type StateSelectorEqualityFunction = (any, any) => boolean;
 
 class ViewModel {
   binding: Binding;
@@ -30,14 +33,21 @@ class ViewModel {
     fetchError: string,
   };
   initialState: ViewModelState;
+  stateSelector: ?StateSelector;
+  stateSelectorEqualityFunction: ?StateSelectorEqualityFunction;
+  lastReloadState: any;
 
-  constructor(name: string, binding: Binding, initialParameters: mixed) {
+  constructor(name: string, binding: Binding, initialParameters: mixed,
+              stateSelector?: StateSelector, stateSelectorEqualityFunction?: StateSelectorEqualityFunction) {
     this.database = null;
     this.name = name;
     this.binding = binding;
     this.mountCount = 0;
     this.initialParameters = initialParameters;
     this._parameters = initialParameters;
+    this.stateSelector = stateSelector;
+    this.stateSelectorEqualityFunction = stateSelectorEqualityFunction;
+    this.lastReloadState = undefined;
 
     const actionInterfix = name.toUpperCase();
 
@@ -65,7 +75,12 @@ class ViewModel {
     if (!this.database) {
       return Promise.reject(`Could not reload ViewModel ${this.name}: not registered`);
     }
-    return Promise.resolve(this.binding(this.database.dao, parameters))
+
+    const selector: ?StateSelector = this.stateSelector;
+    const selectedState = selector ? selector(this.database.store.getState()) : null;
+    this.lastReloadState = selectedState;
+
+    return Promise.resolve(this.binding(this.database.dao, parameters, selectedState));
   }
 
   getReloadAction(parameters: mixed) {
