@@ -124,6 +124,7 @@ export default class Database {
         const subState = viewModel.stateSelector(state);
         const equalityFn = viewModel.stateSelectorEqualityFunction || defaultEqualityFunction;
         if (!equalityFn(viewModel.lastReloadState, subState)) {
+          viewModel.lastReloadState = subState;
           this.store.dispatch(viewModel.getReloadAction());
         }
       });
