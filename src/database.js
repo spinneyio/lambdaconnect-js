@@ -3,7 +3,6 @@
 import Promise from 'bluebird';
 import Dexie from 'dexie';
 import 'dexie-observable';
-import relationships from 'dexie-relationships'
 import {Action, combineReducers, Reducer, ReducersMapObject, Store} from 'redux';
 import fetch from 'isomorphic-fetch';
 import {v1 as uuid} from 'uuid';
@@ -86,10 +85,7 @@ export default class Database {
       ...options,
     };
     this.syncInProgress = false;
-    this.dao = new Dexie(DATABASE_NAME, {
-      addons: [relationships],
-      autoOpen: false,
-    });
+    this.dao = new Dexie(DATABASE_NAME, {autoOpen: false});
     this.registeredViewModels = new Map<string, ViewModel>();
     this.viewModels = [];
     this.isInitialized = false;
@@ -186,14 +182,14 @@ export default class Database {
                                              .filter(attribute => attribute.attributeType === 'relationship'
                                                || (attribute.indexed && attribute.name !== 'uuid'))
                                              .map(attribute => {
-                                               if (attribute.attributeType === 'relationship') {
-                                                 return `${ attribute.name } -> ${ attribute.destinationEntity }`;
+                                               if (attribute.attributeType === 'relationship' && attribute.toMany) {
+                                                 return `*${ attribute.name }`;
                                                }
 
                                                return attribute.name;
                                              })
                                              .concat(indexes[entityName] || []))
-                               .join(', ');
+                               .join(',');
                            return acc;
                          }, {});
 

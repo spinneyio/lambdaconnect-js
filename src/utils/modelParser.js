@@ -78,7 +78,6 @@ export default (xmlData: string) : DatabaseModel => {
           attributeType: 'relationship',
           syncable: attr['@_syncable'] === 'YES',
           toMany: attr['@_toMany'] === 'YES',
-          destinationEntity: attr['@_destinationEntity'],
         };
         entitySchema.attributes[attributeSchema.name] = attributeSchema;
       }
