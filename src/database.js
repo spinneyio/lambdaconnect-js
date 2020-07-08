@@ -1,16 +1,18 @@
-//@flow
+// @flow
 
 import Promise from 'bluebird';
 import Dexie from 'dexie';
 import 'dexie-observable';
-import {Action, combineReducers, Reducer, ReducersMapObject, Store} from 'redux';
+import {
+  Action, combineReducers, Reducer, ReducersMapObject, Store,
+} from 'redux';
 import fetch from 'isomorphic-fetch';
-import {v1 as uuid} from 'uuid';
+import { v1 as uuid } from 'uuid';
 
 import ViewModel from './view-model';
 import hashCode from './utils/hashCode';
 import modelParser from './utils/modelParser';
-import type {DatabaseModel} from './utils/modelParser';
+import type { DatabaseModel } from './utils/modelParser';
 
 export type DatabaseState = {
   status: 'uninitialized' | 'offline' | 'online',
@@ -66,13 +68,21 @@ const initState : DatabaseState = {
 
 export default class Database {
   dao: Dexie;
+
   registeredViewModels: Map<string, ViewModel>;
+
   viewModels: ViewModel[];
+
   store: Store;
+
   model: DatabaseModel;
+
   options: DatabaseOptions;
+
   requestHeaders: any;
+
   syncInProgress: boolean;
+
   isInitialized: boolean;
 
   constructor(options: DatabaseInitOptions) {
@@ -85,7 +95,7 @@ export default class Database {
       ...options,
     };
     this.syncInProgress = false;
-    this.dao = new Dexie(DATABASE_NAME, {autoOpen: false});
+    this.dao = new Dexie(DATABASE_NAME, { autoOpen: false });
     this.registeredViewModels = new Map<string, ViewModel>();
     this.viewModels = [];
     this.isInitialized = false;
@@ -103,16 +113,14 @@ export default class Database {
         ...this.requestHeaders,
         ...headers,
       },
-      body: typeof body === 'object' ? JSON.stringify(body): body,
+      body: typeof body === 'object' ? JSON.stringify(body) : body,
     });
   }
 
   setReduxStore(store: Store) : void {
     this.store = store;
 
-    const defaultEqualityFunction = (left: any, right: any): boolean => {
-      return left === right;
-    }
+    const defaultEqualityFunction = (left: any, right: any): boolean => left === right;
 
     this.store.subscribe(() => {
       const state = this.store.getState();
@@ -150,7 +158,7 @@ export default class Database {
     const receivedSchemaHash: number = hashCode(modelResponse.model);
     if (currentSchemaHash !== receivedSchemaHash && currentSchemaHash) {
       // if not - wipe out the whole database if exist
-      //todo: reconsider migrations (either with server-side counting or local storage version counter)
+      // todo: reconsider migrations (either with server-side counting or local storage version counter)
       console.log('Truncating the whole database because of model version change');
       if (!this.dao.isOpen()) {
         await this.dao.open();
@@ -165,35 +173,32 @@ export default class Database {
 
 
     this.model = modelParser(modelResponse.model);
-    console.log(this.model);
 
     const indexes = (options && options.indexes) || {};
     const schema = Object.keys(this.model.entities)
-                         .reduce((acc, entityName) => {
-                           const entity = this.model.entities[entityName];
-                           if (!entity.syncable) {
-                             return acc;
-                           }
+      .reduce((acc, entityName) => {
+        const entity = this.model.entities[entityName];
+        if (!entity.syncable) {
+          return acc;
+        }
 
-                           acc[entityName] =
-                             ['$$uuid', 'createdAt', 'updatedAt', 'isSuitableForPush', 'syncRevision']
-                               .concat(Object.keys(entity.attributes)
-                                             .map(attributeName => entity.attributes[attributeName])
-                                             .filter(attribute => attribute.attributeType === 'relationship'
+        acc[entityName] = ['$$uuid', 'createdAt', 'updatedAt', 'isSuitableForPush', 'syncRevision']
+          .concat(Object.keys(entity.attributes)
+            .map((attributeName) => entity.attributes[attributeName])
+            .filter((attribute) => attribute.attributeType === 'relationship'
                                                || (attribute.indexed && attribute.name !== 'uuid'))
-                                             .map(attribute => {
-                                               if (attribute.attributeType === 'relationship' && attribute.toMany) {
-                                                 return `*${ attribute.name }`;
-                                               }
+            .map((attribute) => {
+              if (attribute.attributeType === 'relationship' && attribute.toMany) {
+                return `*${attribute.name}`;
+              }
 
-                                               return attribute.name;
-                                             })
-                                             .concat(indexes[entityName] || []))
-                               .join(',');
-                           return acc;
-                         }, {});
+              return attribute.name;
+            })
+            .concat(indexes[entityName] || []))
+          .join(',');
+        return acc;
+      }, {});
 
-    console.log(schema);
     this.dao.version(this.model.version).stores(schema);
 
     // changes listener (cross-tab observable)
@@ -202,7 +207,7 @@ export default class Database {
         return;
       }
       console.log('Detected db change, reloading');
-      //todo: reload optimizations should be based on changes
+      // todo: reload optimizations should be based on changes
       this.reloadAllViewModels();
     });
 
@@ -236,7 +241,7 @@ export default class Database {
     // save received model hash as current
     window.localStorage.setItem(LOCALSTORAGE_MODEL_HASH_KEY, receivedSchemaHash);
 
-    //todo: reconsider database initialization within redux persist rehydrate
+    // todo: reconsider database initialization within redux persist rehydrate
     this.store.dispatch({
       type: DATABASE_INITIALIZED,
     });
@@ -256,19 +261,18 @@ export default class Database {
   }
 
   _publishSyncProgress(percent: number) {
-    console.log(`progress: ${percent}`);
     this.store.dispatch({
       type: DATABASE_SYNC_IN_PROGRESS,
-      payload: {percent},
+      payload: { percent },
     });
   }
 
   async _monitoredBulkPut(entitiesToPush: {[string]: [{isSuitableForPush: boolean}]}, progressScale: number, progressOffset: number) {
     const totalRecords = Object.keys(entitiesToPush)
-                               .reduce((acc, entityName) => acc + entitiesToPush[entityName].length, 0);
+      .reduce((acc, entityName) => acc + entitiesToPush[entityName].length, 0);
     let processedRecords = 0;
     const progressInterval = setInterval(() => {
-      const percent = (processedRecords*progressScale/totalRecords) + progressOffset;
+      const percent = (processedRecords * progressScale / totalRecords) + progressOffset;
       this._publishSyncProgress(percent);
     }, 500);
 
@@ -286,7 +290,7 @@ export default class Database {
               const entitiesSlice = entities.slice(currentStart, currentStart + this.options.bulkPutLimit);
 
               for (const entity of entitiesSlice) {
-                entity.isSuitableForPush = false
+                entity.isSuitableForPush = false;
               }
 
               await this.dao.table(entityName).bulkPut((entitiesSlice));
@@ -294,7 +298,8 @@ export default class Database {
               processedRecords += entitiesSlice.length;
             }
           }
-        });
+        },
+      );
     } finally {
       clearInterval(progressInterval);
     }
@@ -316,7 +321,7 @@ export default class Database {
         const resultEntity = {};
 
         // pick only attributes that complies to the schema
-        for (let attribute of attributes) {
+        for (const attribute of attributes) {
           if (typeof entity[attribute] !== 'undefined') {
             resultEntity[attribute] = entity[attribute];
           }
@@ -330,7 +335,7 @@ export default class Database {
     if (Object.keys(entitiesToPush).length > 0) {
       const pushResponse = await this.makeServerRequest(this.options.pushPath, 'POST', null, entitiesToPush);
       if (pushResponse.status !== 200) {
-        throw new Error('Error while pushing data to server: ' + pushResponse.status);
+        throw new Error(`Error while pushing data to server: ${pushResponse.status}`);
       }
     }
   }
@@ -347,7 +352,7 @@ export default class Database {
 
     const pullResponse = await this.makeServerRequest(this.options.pullPath, 'POST', {}, entityLastRevisions);
     if (pullResponse.status !== 200) {
-      throw new Error('Error while pulling data from server: ' + pullResponse.status);
+      throw new Error(`Error while pulling data from server: ${pullResponse.status}`);
     }
 
     const body = await pullResponse.json();
@@ -378,17 +383,15 @@ export default class Database {
   }
 
   async truncate() : Promise<void> {
-    await Promise.mapSeries(Object.keys(this.model.entities), (entityName) => {
-      return this.dao.table(entityName).clear();
-    });
+    await Promise.mapSeries(Object.keys(this.model.entities), (entityName) => this.dao.table(entityName).clear());
   }
 
   reloadAllViewModels() : void {
     if (!this.dao.isOpen()) {
       console.warn('Database still not opened, aborting reload');
     }
-    console.log('Reloading all registered view models: ' + this.registeredViewModels.size);
-    const dispatch = this.store.dispatch;
+    console.log(`Reloading all registered view models: ${this.registeredViewModels.size}`);
+    const { dispatch } = this.store;
     this.registeredViewModels.forEach((viewModel: ViewModel) => {
       viewModel.getReloadAction()(dispatch);
     });
@@ -396,7 +399,7 @@ export default class Database {
 
   getReducer(viewModels: Array<ViewModel>) : ReducersMapObject {
     this.viewModels = viewModels;
-    this.viewModels.forEach((viewModel => {
+    this.viewModels.forEach(((viewModel) => {
       viewModel.initialize(this);
     }));
 
@@ -442,16 +445,15 @@ export default class Database {
     return combineReducers(reducers);
   }
 
-  registerViewModel(viewModel: ViewModel) {
+  registerViewModel(viewModel: ViewModel, initialReloadParameters: ?any) {
     this.registeredViewModels.set(viewModel.name, viewModel);
     if (this.isInitialized) {
-      //todo: maybe a query-revision comparison to optimize query calls?
-      viewModel.getReloadAction()(this.store.dispatch);
+      // todo: maybe a query-revision comparison to optimize query calls?
+      viewModel.getReloadAction(initialReloadParameters)(this.store.dispatch);
     }
   }
 
   unregisterViewModel(viewModel: ViewModel) {
     this.registeredViewModels.delete(viewModel.name);
   }
-
 }

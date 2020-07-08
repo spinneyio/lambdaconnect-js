@@ -1,4 +1,4 @@
-//@flow
+// @flow
 import type Dexie from 'dexie';
 import Database from './database';
 
@@ -22,23 +22,33 @@ export type StateSelectorEqualityFunction = (any, any) => boolean;
 
 class ViewModel {
   binding: Binding;
+
   database: Database | null;
+
   mountCount : number;
+
   name: string;
+
   initialParameters: mixed;
+
   _parameters: mixed;
+
   actions: {
     fetchPending: string,
     fetchSuccess: string,
     fetchError: string,
   };
+
   initialState: ViewModelState;
+
   stateSelector: ?StateSelector;
+
   stateSelectorEqualityFunction: ?StateSelectorEqualityFunction;
+
   lastReloadState: any;
 
   constructor(name: string, binding: Binding, initialParameters: mixed,
-              stateSelector?: StateSelector, stateSelectorEqualityFunction?: StateSelectorEqualityFunction) {
+    stateSelector?: StateSelector, stateSelectorEqualityFunction?: StateSelectorEqualityFunction) {
     this.database = null;
     this.name = name;
     this.binding = binding;
@@ -54,7 +64,7 @@ class ViewModel {
     this.actions = {
       fetchPending: `MV_${actionInterfix}_FETCH_PENDING`,
       fetchSuccess: `MV_${actionInterfix}_FETCH_SUCCESS`,
-      fetchError: `MV_${actionInterfix}_FETCH_ERROR`
+      fetchError: `MV_${actionInterfix}_FETCH_ERROR`,
     };
     this.initialState = {
       error: null,
@@ -97,49 +107,50 @@ class ViewModel {
           });
         })
         .catch((error) => {
+          console.error(`Error reloading ViewModel '${this.name}'`, error);
           dispatch({
             type: this.actions.fetchError,
             error,
           });
         });
-    }
+    };
   }
 
   getReducer() : ViewModelReducer {
-      return (state: ViewModelState = this.initialState, action: ViewModelAction) => {
-        switch (action.type) {
-          case this.actions.fetchPending:
+    return (state: ViewModelState = this.initialState, action: ViewModelAction) => {
+      switch (action.type) {
+        case this.actions.fetchPending:
 
-            // not elegant but makes us independent from direct subscribes from the store (allows user to create redux structure as he likes)
-            this._parameters = action.payload || state.parameters;
-            return {
-              ...state,
-              pending: true,
-              parameters: this._parameters,
-            };
-          case this.actions.fetchError:
-            return {
-              ...state,
-              error: action.error,
-              pending: false,
-            };
-          case this.actions.fetchSuccess:
-            return {
-              ...state,
-              error: null,
-              pending: false,
-              result: action.payload,
-            };
-          default:
-            this._parameters = state.parameters;
-            return state;
-        }
-      };
+          // not elegant but makes us independent from direct subscribes from the store (allows user to create redux structure as he likes)
+          this._parameters = action.payload || state.parameters;
+          return {
+            ...state,
+            pending: true,
+            parameters: this._parameters,
+          };
+        case this.actions.fetchError:
+          return {
+            ...state,
+            error: action.error,
+            pending: false,
+          };
+        case this.actions.fetchSuccess:
+          return {
+            ...state,
+            error: null,
+            pending: false,
+            result: action.payload,
+          };
+        default:
+          this._parameters = state.parameters;
+          return state;
+      }
+    };
   }
 
-  mount() {
+  mount(initialParameters: ?any) {
     if (this.mountCount === 0 && this.database) {
-      this.database.registerViewModel(this);
+      this.database.registerViewModel(this, initialParameters);
     }
     this.mountCount += 1;
   }
