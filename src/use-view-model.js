@@ -1,25 +1,17 @@
-//@flow
-import * as React from 'react'
+// @flow
 import { useEffect } from 'react';
 
 import type ViewModel from './view-model';
 
-export type UseViewModelHOC = (component: React.AbstractComponent<any>) => React.AbstractComponent<any>;
+export default function (viewModels: Array<ViewModel> | ViewModel) {
+  useEffect(() => {
+    const models = Array.isArray(viewModels) ? viewModels : [viewModels];
+    models.forEach((viewModel: ViewModel) => {
+      viewModel.mount();
+    });
 
-export default function(viewModels: ViewModel[]) : UseViewModelHOC {
-    return (component: React.AbstractComponent<any>) => {
-      return (props) => {
-        useEffect(() => {
-          viewModels.forEach((viewModel: ViewModel) => {
-            viewModel.mount();
-          });
-
-          return () => viewModels.forEach((viewModel: ViewModel) => {
-            viewModel.unmount();
-          });
-        }, [viewModels])
-
-        return React.createElement(component, props);
-      };
-    };
-  }
+    return () => models.forEach((viewModel: ViewModel) => {
+      viewModel.unmount();
+    });
+  }, [viewModels]);
+}
