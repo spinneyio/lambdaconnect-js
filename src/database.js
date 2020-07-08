@@ -226,7 +226,7 @@ export default class Database {
         return {
           isSuitableForPush: 1,
           updatedAt: new Date().toISOString(),
-          active: 1,
+          active: typeof modifications.active === 'number' ? modifications.active : 1,
         };
       }
     };
