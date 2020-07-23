@@ -151,7 +151,12 @@ export default class Database {
 
     // download current data model
     // todo: it is worth to implement calculating schema hash on the server-side
-    const modelResponse: {model: string} = await (await this.makeServerRequest(this.options.dataModelPath)).json();
+    const response = await this.makeServerRequest(this.options.dataModelPath);
+    if (response.status !== 200 || !response.headers.get('Content-Type').includes('application/json')) {
+      throw new Error('Could not load database model');
+    }
+
+    const modelResponse: {model: string} = await (response).json();
 
     // check if data model is up to date
     const currentSchemaHash: number = Number(window.localStorage.getItem(LOCALSTORAGE_MODEL_HASH_KEY));
