@@ -13,5 +13,7 @@ export default function (viewModels: Array<ViewModel> | ViewModel, initialParame
     return () => models.forEach((viewModel: ViewModel) => {
       viewModel.unmount();
     });
+    // we prevent loop here
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewModels]);
 }

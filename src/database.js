@@ -34,6 +34,8 @@ export type DatabaseOptions = {
   pullPath: string,
   dataModelPath: string,
   bulkPutLimit: number,
+  disablePush: boolean,
+  disablePull: boolean,
 }
 
 export type DatabaseInitOptions = {
@@ -43,6 +45,8 @@ export type DatabaseInitOptions = {
   pullPath?: string,
   dataModelPath?: string,
   bulkPutLimit?: number,
+  disablePush?: boolean,
+  disablePull?: boolean,
 };
 
 export type DatabaseInitializationOptions = {
@@ -92,6 +96,8 @@ export default class Database {
       pullPath: 'lambdaconnect/pull',
       dataModelPath: 'data-model',
       bulkPutLimit: 1000,
+      disablePull: false,
+      disablePush: false,
       ...options,
     };
     this.syncInProgress = false;
@@ -151,7 +157,12 @@ export default class Database {
 
     // download current data model
     // todo: it is worth to implement calculating schema hash on the server-side
-    const modelResponse: {model: string} = await (await this.makeServerRequest(this.options.dataModelPath)).json();
+    const response = await this.makeServerRequest(this.options.dataModelPath);
+    if (response.status !== 200 || !response.headers.get('Content-Type').includes('application/json')) {
+      throw new Error('Could not load database model');
+    }
+
+    const modelResponse: {model: string} = await (response).json();
 
     // check if data model is up to date
     const currentSchemaHash: number = Number(window.localStorage.getItem(LOCALSTORAGE_MODEL_HASH_KEY));
@@ -215,9 +226,13 @@ export default class Database {
     const createHook = (primaryKey, object, transaction) => {
       if (!transaction.__syncTransaction) {
         object.isSuitableForPush = 1;
-        object.uuid = uuid();
+        if (typeof object.uuid === 'undefined') {
+          object.uuid = uuid();
+        }
         object.createdAt = object.updatedAt = new Date().toISOString();
-        object.active = 1;
+        if (typeof object.active === 'undefined') {
+          object.active = 1;
+        }
         return object.uuid;
       }
     };
@@ -364,8 +379,12 @@ export default class Database {
   async sync() : Promise<void> {
     this.syncInProgress = true;
     try {
-      await this._syncPush();
-      await this._syncPull();
+      if (!this.options.disablePush) {
+        await this._syncPush();
+      }
+      if (!this.options.disablePull) {
+        await this._syncPull();
+      }
 
       this.syncInProgress = false;
       this.store.dispatch({
