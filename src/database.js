@@ -13,6 +13,7 @@ import ViewModel from './view-model';
 import hashCode from './utils/hashCode';
 import modelParser from './utils/modelParser';
 import type { DatabaseModel } from './utils/modelParser';
+import DatabaseSyncError from "./errors/DatabaseSyncError";
 
 export type DatabaseState = {
   status: 'uninitialized' | 'offline' | 'online',
@@ -350,7 +351,7 @@ export default class Database {
     if (Object.keys(entitiesToPush).length > 0) {
       const pushResponse = await this.makeServerRequest(this.options.pushPath, 'POST', null, entitiesToPush);
       if (pushResponse.status !== 200) {
-        throw new Error(`Error while pushing data to server: ${pushResponse.status}`);
+        throw new DatabaseSyncError(`Error while pushing data to server: ${pushResponse.status}`, {});
       }
     }
   }
@@ -366,11 +367,10 @@ export default class Database {
     console.log(entityLastRevisions);
 
     const pullResponse = await this.makeServerRequest(this.options.pullPath, 'POST', {}, entityLastRevisions);
-    if (pullResponse.status !== 200) {
-      throw new Error(`Error while pulling data from server: ${pullResponse.status}`);
-    }
-
     const body = await pullResponse.json();
+    if (pullResponse.status !== 200) {
+      throw new DatabaseSyncError(`Error while pushing data to server: ${pullResponse.status}`, body);
+    }
     const data = JSON.parse(body.data);
 
     await this._monitoredBulkPut(data, 25, 75);
