@@ -59,6 +59,7 @@ const DATABASE_INITIALIZED = 'DATABASE_INITIALIZED';
 const DATABASE_SYNC_IN_PROGRESS = 'DATABASE_SYNC_IN_PROGRESS';
 const DATABASE_SYNC_FINISHED = 'DATABASE_SYNC_FINISHED';
 const DATABASE_SYNC_ERROR = 'DATABASE_SYNC_ERROR';
+const DATABASE_INITIALIZATION_ERROR = 'DATABASE_INITIALIZATION_ERROR';
 
 const LOCALSTORAGE_MODEL_HASH_KEY = 'lambdaconnect_model_hash';
 const DATABASE_NAME = 'lambdaconnect';
@@ -150,118 +151,124 @@ export default class Database {
     if (!this.store) {
       throw new Error('Redux store is not set');
     }
-
-    if (options && options.truncate) {
-      console.log('Deleting database!');
-      await this.dao.delete();
-    }
-
-    // download current data model
-    // todo: it is worth to implement calculating schema hash on the server-side
-    const response = await this.makeServerRequest(this.options.dataModelPath);
-    if (response.status !== 200 || !response.headers.get('Content-Type').includes('application/json')) {
-      throw new Error('Could not load database model');
-    }
-
-    const modelResponse: {model: string} = await (response).json();
-
-    // check if data model is up to date
-    const currentSchemaHash: number = Number(window.localStorage.getItem(LOCALSTORAGE_MODEL_HASH_KEY));
-    const receivedSchemaHash: number = hashCode(modelResponse.model);
-    if (currentSchemaHash !== receivedSchemaHash && currentSchemaHash) {
-      // if not - wipe out the whole database if exist
-      // todo: reconsider migrations (either with server-side counting or local storage version counter)
-      console.log('Truncating the whole database because of model version change');
-      if (!this.dao.isOpen()) {
-        await this.dao.open();
+    try {
+      if (options && options.truncate) {
+        console.log('Deleting database!');
+        await this.dao.delete();
       }
-      await this.dao.delete();
-      await this.dao.close();
-    }
 
-    if (this.dao.isOpen()) {
-      await this.dao.close();
-    }
+      // download current data model
+      // todo: it is worth to implement calculating schema hash on the server-side
+      const response = await this.makeServerRequest(this.options.dataModelPath);
+      if (response.status !== 200 || !response.headers.get('Content-Type').includes('application/json')) {
+        throw new Error('Could not load database model');
+      }
+
+      const modelResponse: { model: string } = await (response).json();
+
+      // check if data model is up to date
+      const currentSchemaHash: number = Number(window.localStorage.getItem(LOCALSTORAGE_MODEL_HASH_KEY));
+      const receivedSchemaHash: number = hashCode(modelResponse.model);
+      if (currentSchemaHash !== receivedSchemaHash && currentSchemaHash) {
+        // if not - wipe out the whole database if exist
+        // todo: reconsider migrations (either with server-side counting or local storage version counter)
+        console.log('Truncating the whole database because of model version change');
+        if (!this.dao.isOpen()) {
+          await this.dao.open();
+        }
+        await this.dao.delete();
+        await this.dao.close();
+      }
+
+      if (this.dao.isOpen()) {
+        await this.dao.close();
+      }
 
 
-    this.model = modelParser(modelResponse.model);
+      this.model = modelParser(modelResponse.model);
 
-    const indexes = (options && options.indexes) || {};
-    const schema = Object.keys(this.model.entities)
-      .reduce((acc, entityName) => {
-        const entity = this.model.entities[entityName];
-        if (!entity.syncable) {
+      const indexes = (options && options.indexes) || {};
+      const schema = Object.keys(this.model.entities)
+        .reduce((acc, entityName) => {
+          const entity = this.model.entities[entityName];
+          if (!entity.syncable) {
+            return acc;
+          }
+
+          acc[entityName] = ['$$uuid', 'createdAt', 'updatedAt', 'isSuitableForPush', 'syncRevision']
+            .concat(Object.keys(entity.attributes)
+              .map((attributeName) => entity.attributes[attributeName])
+              .filter((attribute) => attribute.attributeType === 'relationship'
+                || (attribute.indexed && attribute.name !== 'uuid'))
+              .map((attribute) => {
+                if (attribute.attributeType === 'relationship' && attribute.toMany) {
+                  return `*${attribute.name}`;
+                }
+
+                return attribute.name;
+              })
+              .concat(indexes[entityName] || []))
+            .join(',');
           return acc;
+        }, {});
+
+      this.dao.version(this.model.version).stores(schema);
+
+      // changes listener (cross-tab observable)
+      this.dao.on('changes', (changes, partial) => {
+        if (this.syncInProgress || partial || changes.length === 0) {
+          return;
         }
+        console.log('Detected db change, reloading');
+        // todo: reload optimizations should be based on changes
+        this.reloadAllViewModels();
+      });
 
-        acc[entityName] = ['$$uuid', 'createdAt', 'updatedAt', 'isSuitableForPush', 'syncRevision']
-          .concat(Object.keys(entity.attributes)
-            .map((attributeName) => entity.attributes[attributeName])
-            .filter((attribute) => attribute.attributeType === 'relationship'
-                                               || (attribute.indexed && attribute.name !== 'uuid'))
-            .map((attribute) => {
-              if (attribute.attributeType === 'relationship' && attribute.toMany) {
-                return `*${attribute.name}`;
-              }
-
-              return attribute.name;
-            })
-            .concat(indexes[entityName] || []))
-          .join(',');
-        return acc;
-      }, {});
-
-    this.dao.version(this.model.version).stores(schema);
-
-    // changes listener (cross-tab observable)
-    this.dao.on('changes', (changes, partial) => {
-      if (this.syncInProgress || partial || changes.length === 0) {
-        return;
-      }
-      console.log('Detected db change, reloading');
-      // todo: reload optimizations should be based on changes
-      this.reloadAllViewModels();
-    });
-
-    // isSuitableForPush hooks
-    const createHook = (primaryKey, object, transaction) => {
-      if (!transaction.__syncTransaction) {
-        object.isSuitableForPush = 1;
-        if (typeof object.uuid === 'undefined') {
-          object.uuid = uuid();
+      // isSuitableForPush hooks
+      const createHook = (primaryKey, object, transaction) => {
+        if (!transaction.__syncTransaction) {
+          object.isSuitableForPush = 1;
+          if (typeof object.uuid === 'undefined') {
+            object.uuid = uuid();
+          }
+          object.createdAt = object.updatedAt = new Date().toISOString();
+          if (typeof object.active === 'undefined') {
+            object.active = 1;
+          }
+          return object.uuid;
         }
-        object.createdAt = object.updatedAt = new Date().toISOString();
-        if (typeof object.active === 'undefined') {
-          object.active = 1;
+      };
+      const updateHook = (modifications, primKey, obj, transaction) => {
+        if (!transaction.__syncTransaction) {
+          return {
+            isSuitableForPush: 1,
+            updatedAt: new Date().toISOString(),
+            active: typeof modifications.active === 'number' ? modifications.active : 1,
+          };
         }
-        return object.uuid;
-      }
-    };
-    const updateHook = (modifications, primKey, obj, transaction) => {
-      if (!transaction.__syncTransaction) {
-        return {
-          isSuitableForPush: 1,
-          updatedAt: new Date().toISOString(),
-          active: typeof modifications.active === 'number' ? modifications.active : 1,
-        };
-      }
-    };
+      };
 
-    for (const entityName of Object.keys(this.model.entities)) {
-      this.dao.table(entityName).hook('creating', createHook);
-      this.dao.table(entityName).hook('updating', updateHook);
-      // todo: deletion hook
+      for (const entityName of Object.keys(this.model.entities)) {
+        this.dao.table(entityName).hook('creating', createHook);
+        this.dao.table(entityName).hook('updating', updateHook);
+        // todo: deletion hook
+      }
+
+      await this.dao.open();
+      // save received model hash as current
+      window.localStorage.setItem(LOCALSTORAGE_MODEL_HASH_KEY, receivedSchemaHash);
+
+      // todo: reconsider database initialization within redux persist rehydrate
+      this.store.dispatch({
+        type: DATABASE_INITIALIZED,
+      });
+      this.isInitialized = true;
+    } catch (err) {
+      this.store.dispatch({
+        type: DATABASE_INITIALIZATION_ERROR,
+        error: err,
+      })
     }
-
-    await this.dao.open();
-    // save received model hash as current
-    window.localStorage.setItem(LOCALSTORAGE_MODEL_HASH_KEY, receivedSchemaHash);
-
-    // todo: reconsider database initialization within redux persist rehydrate
-    this.store.dispatch({
-      type: DATABASE_INITIALIZED,
-    });
-    this.isInitialized = true;
 
     if (this.options.autoSync > 0) {
       setInterval(() => {
