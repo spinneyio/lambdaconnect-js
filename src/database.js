@@ -148,11 +148,10 @@ export default class Database {
   }
 
   async initialize(options?: DatabaseInitializationOptions) : Promise<void> {
+    if (!this.store) {
+      throw new Error('Redux store is not set');
+    }
     try {
-      if (!this.store) {
-        throw new Error('Redux store is not set');
-      }
-
       if (options && options.truncate) {
         console.log('Deleting database!');
         await this.dao.delete();
