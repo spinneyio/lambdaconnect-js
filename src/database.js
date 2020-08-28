@@ -8,6 +8,7 @@ import {
 } from 'redux';
 import fetch from 'isomorphic-fetch';
 import { v1 as uuid } from 'uuid';
+import SyncConflictError from './errors/SyncConflictError';
 
 import ViewModel from './view-model';
 import hashCode from './utils/hashCode';
@@ -30,7 +31,6 @@ export type DatabaseAction = {
 
 export type DatabaseOptions = {
   apiUrl: string,
-  autoSync: number,
   pushPath: string,
   pullPath: string,
   dataModelPath: string,
@@ -41,7 +41,6 @@ export type DatabaseOptions = {
 
 export type DatabaseInitOptions = {
   apiUrl: string,
-  autoSync?: number,
   pushPath?: string,
   pullPath?: string,
   dataModelPath?: string,
@@ -91,9 +90,10 @@ export default class Database {
 
   isInitialized: boolean;
 
+  isChangesFrozen: boolean = false;
+
   constructor(options: DatabaseInitOptions) {
     this.options = {
-      autoSync: 0,
       pushPath: 'lambdaconnect/push',
       pullPath: 'lambdaconnect/pull',
       dataModelPath: 'data-model',
@@ -216,10 +216,10 @@ export default class Database {
 
       // changes listener (cross-tab observable)
       this.dao.on('changes', (changes, partial) => {
-        if (this.syncInProgress || partial || changes.length === 0) {
+        if (this.isChangesFrozen || partial || changes.length === 0) {
           return;
         }
-        console.log('Detected db change, reloading');
+
         // todo: reload optimizations should be based on changes
         this.reloadAllViewModels();
       });
@@ -267,19 +267,7 @@ export default class Database {
       this.store.dispatch({
         type: DATABASE_INITIALIZATION_ERROR,
         error: err,
-      })
-    }
-
-    if (this.options.autoSync > 0) {
-      setInterval(() => {
-        this.sync()
-          .then(() => {
-            console.log('Autosync completed');
-          })
-          .catch((error) => {
-            console.error('Autosync failed', error);
-          });
-      }, 1000 * this.options.autoSync);
+      });
     }
   }
 
@@ -354,11 +342,28 @@ export default class Database {
       });
     });
 
-    console.log('Entities to sync via push', entitiesToPush);
     if (Object.keys(entitiesToPush).length > 0) {
       const pushResponse = await this.makeServerRequest(this.options.pushPath, 'POST', null, entitiesToPush);
       if (pushResponse.status !== 200) {
-        throw new DatabaseSyncError(`Error while pushing data to server: ${pushResponse.status}`, {});
+        let errorContent;
+        try {
+          errorContent = await pushResponse.json();
+        } catch {
+          errorContent = null;
+        }
+        throw new DatabaseSyncError(`Error while pushing data to server: ${pushResponse.status}`, {
+          statusCode: pushResponse,
+          errorCode: errorContent ? errorContent['error-content'] : null,
+        });
+      }
+
+      const data = await pushResponse.json();
+      if (Object.keys(data['rejected-objects']).length || Object.keys(data['rejected-fields']).length) {
+        throw new SyncConflictError("The push was malformed", {
+          pushPayload: entitiesToPush,
+          rejectedFields: data['rejected-fields'],
+          rejectedObjects: data['rejected-objects'],
+        });
       }
     }
   }
@@ -370,8 +375,6 @@ export default class Database {
       const lastSyncRevision = (await this.dao.table(entityName).orderBy('syncRevision').last() || {}).syncRevision;
       entityLastRevisions[entityName] = lastSyncRevision ? lastSyncRevision + 1 : 0;
     });
-
-    console.log(entityLastRevisions);
 
     const pullResponse = await this.makeServerRequest(this.options.pullPath, 'POST', {}, entityLastRevisions);
     const body = await pullResponse.json();
@@ -397,7 +400,6 @@ export default class Database {
       this.store.dispatch({
         type: DATABASE_SYNC_FINISHED,
       });
-      this.reloadAllViewModels();
     } catch (error) {
       this.syncInProgress = false;
       this.store.dispatch({
@@ -412,11 +414,15 @@ export default class Database {
     await Promise.mapSeries(Object.keys(this.model.entities), (entityName) => this.dao.table(entityName).clear());
   }
 
+  setChangesFrozen(isFrozen: boolean) {
+    this.isChangesFrozen = isFrozen;
+  }
+
   reloadAllViewModels() : void {
     if (!this.dao.isOpen()) {
       console.warn('Database still not opened, aborting reload');
     }
-    console.log(`Reloading all registered view models: ${this.registeredViewModels.size}`);
+    console.log(`VM reload count: ${this.registeredViewModels.size}`);
     const { dispatch } = this.store;
     this.registeredViewModels.forEach((viewModel: ViewModel) => {
       viewModel.getReloadAction()(dispatch);
