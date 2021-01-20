@@ -4,7 +4,7 @@ export type SyncConflictErrorData = {
   pushPayload: {[String]: Array<mixed>}
 }
 
-export class DatabaseSyncError extends Error {
+export class SyncConflictError extends Error {
   errorData: SyncConflictErrorData;
 
   constructor(message: string, errorData: SyncConflictErrorData) {
@@ -14,4 +14,4 @@ export class DatabaseSyncError extends Error {
   }
 }
 
-export default DatabaseSyncError;
+export default SyncConflictError;

@@ -37,6 +37,7 @@ export type DatabaseOptions = {
   bulkPutLimit: number,
   disablePush: boolean,
   disablePull: boolean,
+  rejectionWhitelist: Array<string>,
 }
 
 export type DatabaseInitOptions = {
@@ -47,6 +48,7 @@ export type DatabaseInitOptions = {
   bulkPutLimit?: number,
   disablePush?: boolean,
   disablePull?: boolean,
+  rejectionWhitelist?: Array<string>,
 };
 
 export type DatabaseInitializationOptions = {
@@ -100,6 +102,7 @@ export default class Database {
       bulkPutLimit: 1000,
       disablePull: false,
       disablePush: false,
+      rejectionWhitelist: [],
       ...options,
     };
     this.syncInProgress = false;
@@ -358,7 +361,11 @@ export default class Database {
       }
 
       const data = await pushResponse.json();
-      if (Object.keys(data['rejected-objects']).length || Object.keys(data['rejected-fields']).length) {
+      const checkedRejectedObjects = Object.keys(data['rejected-objects'])
+        .filter((key) => !this.options.rejectionWhitelist.includes(key));
+      const checkedRejectedFields = Object.keys(data['rejected-fields'])
+        .filter((key) => !this.options.rejectionWhitelist.includes(key));
+      if (checkedRejectedObjects.length || checkedRejectedFields.length) {
         throw new SyncConflictError("The push was malformed", {
           pushPayload: entitiesToPush,
           rejectedFields: data['rejected-fields'],
