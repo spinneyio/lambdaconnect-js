@@ -19,7 +19,7 @@ import DatabaseSyncError from "./errors/DatabaseSyncError";
 export type DatabaseState = {
   status: 'uninitialized' | 'offline' | 'online',
   lastSynchronization: number,
-  inProgress: bool,
+  inProgress: boolean,
   progressPercent: number,
   error: any,
 }
@@ -366,7 +366,13 @@ export default class Database {
       const checkedRejectedObjects = Object.keys(data['rejected-objects'])
         .filter((key) => !this.options.rejectionWhitelist.includes(key));
       const checkedRejectedFields = Object.keys(data['rejected-fields'])
-        .filter((key) => !this.options.rejectionWhitelist.includes(key));
+        .filter((key) => {
+          // flatten the rejected-fields of current object and filter out whitelisted field names
+          const  rejectedNotWhitelistedFields = Object.values(data['rejected-fields'][key])
+            .flat().filter((fieldName) => !this.options.rejectionWhitelist.includes(fieldName))
+          // remove the key from rejected-fields object when the object has been whitelisted or all of its rejected fields are whitelisted
+          return !this.options.rejectionWhitelist.includes(key) && Boolean(rejectedNotWhitelistedFields.length);
+        });
       if (checkedRejectedObjects.length || checkedRejectedFields.length) {
         throw new SyncConflictError("The push was malformed", {
           pushPayload: entitiesToPush,
