@@ -503,4 +503,14 @@ export default class Database {
   unregisterViewModel(viewModel: ViewModel) {
     this.registeredViewModels.delete(viewModel.name);
   }
+
+  clearViewModels(): void {
+    if (!this.dao.isOpen()) {
+      console.warn('Database is not opened, aborting clear');
+    }
+    this.registeredViewModels.forEach((viewModel: ViewModel) => {
+      this.unregisterViewModel(viewModel);
+    })
+  }
+
 }
