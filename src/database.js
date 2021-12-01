@@ -116,8 +116,14 @@ export default class Database {
     this.requestHeaders = headers;
   }
 
-  makeServerRequest(path: string, method : string = 'GET', headers?: any, body?: any) : Promise<any> {
-    return fetch(`${this.options.apiUrl}/${path}`, {
+  makeServerRequest(
+    path: string,
+    method: string = 'GET',
+    headers?: any,
+    body?: any,
+    apiVersion: string = 'v1'
+  ) : Promise<any> {
+    return fetch(`${this.options.apiUrl}/${apiVersion}/${path}`, {
       method,
       headers: {
         'Content-Type': 'application/json',
