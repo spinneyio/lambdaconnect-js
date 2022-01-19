@@ -363,8 +363,8 @@ export default class Database {
           errorContent = null;
         }
         throw new DatabaseSyncError(`Error while pushing data to server: ${pushResponse.status}`, {
-          statusCode: pushResponse,
-          errorCode: errorContent ? errorContent['error-content'] : null,
+          pushPayload: entitiesToPush,
+          error: errorContent ? errorContent.errors?.push : null,
         });
       }
 

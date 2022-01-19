@@ -1,6 +1,6 @@
 export type ErrorData = {
-  errorCode?: number,
-  statusCode?: number,
+  error?: string,
+  pushPayload?: {[string]: Array<any>},
   origin?: Error,
 }
 
