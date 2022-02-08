@@ -365,6 +365,7 @@ export default class Database {
         throw new DatabaseSyncError(`Error while pushing data to server: ${pushResponse.status}`, {
           pushPayload: entitiesToPush,
           error: errorContent ? errorContent.errors?.push : null,
+          type: 'push',
         });
       }
 
@@ -400,7 +401,9 @@ export default class Database {
     const pullResponse = await this.makeServerRequest(this.options.pullPath, 'POST', {}, entityLastRevisions);
     const body = await pullResponse.json();
     if (pullResponse.status !== 200) {
-      throw new DatabaseSyncError(`Error while pushing data to server: ${pullResponse.status}`, body);
+      throw new DatabaseSyncError(`Error while pushing data to server: ${pullResponse.status}`, {
+        type: "pull"
+      });
     }
     const data = JSON.parse(body.data);
 

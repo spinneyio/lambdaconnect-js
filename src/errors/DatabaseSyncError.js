@@ -2,6 +2,7 @@ export type ErrorData = {
   error?: string,
   pushPayload?: {[string]: Array<any>},
   origin?: Error,
+  type: 'push' | 'pull',
 }
 
 class DatabaseSyncError extends Error {
