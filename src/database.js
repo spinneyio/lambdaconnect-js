@@ -402,7 +402,7 @@ export default class Database {
     const body = await pullResponse.json();
     if (pullResponse.status !== 200) {
       throw new DatabaseSyncError(`Error while pushing data to server: ${pullResponse.status}`, {
-        type: "pull"
+        type: 'pull'
       });
     }
     const data = JSON.parse(body.data);
