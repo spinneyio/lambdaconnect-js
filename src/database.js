@@ -249,6 +249,9 @@ export default class Database {
       };
       const updateHook = (modifications, primKey, obj, transaction) => {
         if (!transaction.__syncTransaction) {
+          if (!Object.keys(modifications).length) {
+            return undefined;
+          }
           return {
             isSuitableForPush: 1,
             updatedAt: new Date().toISOString(),
