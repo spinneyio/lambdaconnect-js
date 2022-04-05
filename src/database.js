@@ -22,6 +22,7 @@ export type DatabaseState = {
   inProgress: boolean,
   progressPercent: number,
   error: any,
+  hasVersionChanged: boolean,
 }
 
 export type DatabaseAction = {
@@ -61,6 +62,7 @@ const DATABASE_SYNC_IN_PROGRESS = 'DATABASE_SYNC_IN_PROGRESS';
 const DATABASE_SYNC_FINISHED = 'DATABASE_SYNC_FINISHED';
 const DATABASE_SYNC_ERROR = 'DATABASE_SYNC_ERROR';
 const DATABASE_INITIALIZATION_ERROR = 'DATABASE_INITIALIZATION_ERROR';
+const DATABASE_VERSION_CHANGED = 'DATABASE_VERSION_CHANGED';
 
 const LOCALSTORAGE_MODEL_HASH_KEY = 'lambdaconnect_model_hash';
 const DATABASE_NAME = 'lambdaconnect';
@@ -71,6 +73,7 @@ const initState : DatabaseState = {
   inProgress: false,
   progressPercent: 0,
   error: null,
+  hasVersionChanged: false
 };
 
 export default class Database {
@@ -182,6 +185,7 @@ export default class Database {
         // if not - wipe out the whole database if exist
         // todo: reconsider migrations (either with server-side counting or local storage version counter)
         console.log('Truncating the whole database because of model version change');
+        this.store.dispatch({type: DATABASE_VERSION_CHANGED})
         if (!this.dao.isOpen()) {
           await this.dao.open();
         }
@@ -468,6 +472,7 @@ export default class Database {
           return {
             ...initState,
             status: 'offline',
+            hasVersionChanged: false,
           };
         case DATABASE_SYNC_IN_PROGRESS:
           return {
@@ -488,6 +493,11 @@ export default class Database {
             inProgress: false,
             error: action.payload,
             status: 'offline',
+          };
+        case DATABASE_VERSION_CHANGED:
+          return {
+            ...state,
+            hasVersionChanged: true,
           };
         default:
           return state;
