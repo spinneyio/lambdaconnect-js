@@ -15,6 +15,7 @@ import hashCode from './utils/hashCode';
 import modelParser from './utils/modelParser';
 import type { DatabaseModel } from './utils/modelParser';
 import DatabaseSyncError from "./errors/DatabaseSyncError";
+import DatabaseOpenError from "./errors/DatabaseOpenError";
 
 export type DatabaseState = {
   status: 'uninitialized' | 'offline' | 'online',
@@ -270,7 +271,11 @@ export default class Database {
         // todo: deletion hook
       }
 
-      await this.dao.open();
+      try {
+        await this.dao.open();
+      } catch (e) {
+        throw new DatabaseOpenError('Failed to open database');
+      }
       // save received model hash as current
       window.localStorage.setItem(LOCALSTORAGE_MODEL_HASH_KEY, receivedSchemaHash);
 
@@ -282,7 +287,7 @@ export default class Database {
     } catch (err) {
       this.store.dispatch({
         type: DATABASE_INITIALIZATION_ERROR,
-        error: err,
+        payload: err,
       });
     }
   }
@@ -474,6 +479,12 @@ export default class Database {
             status: 'offline',
             hasVersionChanged: false,
           };
+        case DATABASE_INITIALIZATION_ERROR:
+          return {
+            ...initState,
+            status: 'uninitialized',
+            error: action.payload,
+          }
         case DATABASE_SYNC_IN_PROGRESS:
           return {
             ...state,
