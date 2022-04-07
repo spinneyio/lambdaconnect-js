@@ -175,8 +175,11 @@ export default class Database {
       if (response.status !== 200 || !response.headers.get('Content-Type').includes('application/json')) {
         throw new Error('Could not load database model');
       }
+      console.log('Downloaded data model');
 
       const modelResponse: { model: string } = await (response).json();
+
+      console.log('Parsed data model', modelResponse);
 
       // check if data model is up to date
       const currentSchemaHash: number = Number(window.localStorage.getItem(LOCALSTORAGE_MODEL_HASH_KEY));
@@ -193,12 +196,17 @@ export default class Database {
         await this.dao.close();
       }
 
+      console.log('isopen', this.dao.isOpen());
+
       if (this.dao.isOpen()) {
+        console.log('Database is already open, closing it');
         await this.dao.close();
       }
 
 
       this.model = modelParser(modelResponse.model);
+
+      console.log('Parsed model', this.model);
 
       const indexes = (options && options.indexes) || {};
       const schema = Object.keys(this.model.entities)
@@ -224,6 +232,8 @@ export default class Database {
             .join(',');
           return acc;
         }, {});
+
+      console.log('Schema', schema);
 
       this.dao.version(this.model.version).stores(schema);
 
@@ -270,10 +280,14 @@ export default class Database {
         // todo: deletion hook
       }
 
+      console.log('opening database');
+
       await this.dao.open();
       // save received model hash as current
+      console.log('Database opened');
       window.localStorage.setItem(LOCALSTORAGE_MODEL_HASH_KEY, receivedSchemaHash);
 
+      console.log('initialized');
       // todo: reconsider database initialization within redux persist rehydrate
       this.store.dispatch({
         type: DATABASE_INITIALIZED,
@@ -469,6 +483,7 @@ export default class Database {
     const databaseReducer = (state: DatabaseState = initState, action: DatabaseAction) : DatabaseState => {
       switch (action.type) {
         case DATABASE_INITIALIZED:
+          console.log('Database initialized - reducer');
           return {
             ...initState,
             status: 'offline',
