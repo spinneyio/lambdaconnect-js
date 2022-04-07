@@ -287,7 +287,7 @@ export default class Database {
     } catch (err) {
       this.store.dispatch({
         type: DATABASE_INITIALIZATION_ERROR,
-        error: err,
+        payload: err,
       });
     }
   }
