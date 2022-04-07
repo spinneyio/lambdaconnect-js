@@ -282,7 +282,12 @@ export default class Database {
 
       console.log('opening database');
 
-      await this.dao.open();
+      try {
+        await this.dao.open();
+      } catch (e) {
+        console.error('Failed to open database', e);
+        throw Error('Could not open database');
+      }
       // save received model hash as current
       console.log('Database opened');
       window.localStorage.setItem(LOCALSTORAGE_MODEL_HASH_KEY, receivedSchemaHash);
