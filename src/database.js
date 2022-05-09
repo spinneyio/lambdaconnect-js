@@ -376,12 +376,30 @@ export default class Database {
         }
         throw new DatabaseSyncError(`Error while pushing data to server: ${pushResponse.status}`, {
           pushPayload: entitiesToPush,
-          error: errorContent ? errorContent.errors?.push : null,
+          error: errorContent ? errorContent.errors?.english?.push : `Server responded with ${pushResponse.status}`,
           type: 'push',
         });
       }
 
       const data = await pushResponse.json();
+
+      if (!data.success) {
+        if (data['error-code'] === 42) {
+          this.options = {
+            ...this.options,
+            disablePull: true,
+          }
+          return;
+        }
+        throw new DatabaseSyncError('Server responded with an error while pushing data', {
+          pushPayload: entitiesToPush,
+          error: data.errors?.english
+            ? Object.values(data.errors.english)?.[0]
+            : `Server responded with error code ${data['error-code']}`,
+          type: 'push'
+        })
+      }
+
       const checkedRejectedObjects = Object.keys(data['rejected-objects'])
         .filter((key) => !this.options.rejectionWhitelist.includes(key));
       const checkedRejectedFields = Object.keys(data['rejected-fields'])
@@ -411,9 +429,14 @@ export default class Database {
     });
 
     const pullResponse = await this.makeServerRequest(this.options.pullPath, 'POST', {}, entityLastRevisions);
-    const body = await pullResponse.json();
     if (pullResponse.status !== 200) {
       throw new DatabaseSyncError(`Error while pushing data to server: ${pullResponse.status}`, {
+        type: 'pull'
+      });
+    }
+    const body = await pullResponse.json();
+    if (!body.success) {
+      throw new DatabaseSyncError(`Server responded with error code: ${body['error-code']}`, {
         type: 'pull'
       });
     }
@@ -430,6 +453,13 @@ export default class Database {
       }
       if (!this.options.disablePull) {
         await this._syncPull();
+      } else {
+        // disablePull flag can be set to true
+        // if the server responds with "Try again" while pushing data
+        this.options = {
+          ...this.options,
+          disablePull: false,
+        }
       }
 
       this.syncInProgress = false;
