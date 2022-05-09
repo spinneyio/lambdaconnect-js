@@ -374,6 +374,13 @@ export default class Database {
         } catch {
           errorContent = null;
         }
+        if (errorContent['error-code'] === 42) {
+          this.options = {
+            ...this.options,
+            disablePull: true,
+          }
+          return;
+        }
         throw new DatabaseSyncError(`Error while pushing data to server: ${pushResponse.status}`, {
           pushPayload: entitiesToPush,
           error: errorContent ? errorContent.errors?.english?.push : `Server responded with ${pushResponse.status}`,
@@ -384,13 +391,6 @@ export default class Database {
       const data = await pushResponse.json();
 
       if (!data.success) {
-        if (data['error-code'] === 42) {
-          this.options = {
-            ...this.options,
-            disablePull: true,
-          }
-          return;
-        }
         throw new DatabaseSyncError('Server responded with an error while pushing data', {
           pushPayload: entitiesToPush,
           error: data.errors?.english
