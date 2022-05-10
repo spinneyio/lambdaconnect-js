@@ -374,7 +374,7 @@ export default class Database {
         } catch {
           errorContent = null;
         }
-        if (errorContent['error-code'] === 42) {
+        if (errorContent?.['error-code'] === 42) {
           this.options = {
             ...this.options,
             disablePull: true,
