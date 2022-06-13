@@ -9,7 +9,7 @@ import type {
   RawEntity,
   Type,
   ValidationSchema
-} from "src/utils/types";
+} from "./types";
 
 const options = {
   attributeNamePrefix: "",
@@ -32,7 +32,7 @@ const numberTypes = ['Double', 'Integer 64', 'Integer 16', 'Integer 32', 'Float'
 const stringTypes = ['String', 'Date', 'UUID', 'URI'];
 
 /**
- * Get contraints and type of attribute for validation schema
+ * Get constraints and type of attribute for validation schema
  *
  * @param { RawAttribute.attr } attributeValues
  * @returns {{ type: Type, constraints: Constraints }}
@@ -45,7 +45,7 @@ function getAttributeConstraints(attributeValues): { type: Type, constraints: Co
   if (stringTypes.includes(attributeValues.attributeType)) {
     type = 'string';
   }
-  const constraints = {
+  const constraints: Constraints = {
     required: true,
   };
   if (attributeValues.optional === 'YES') {
