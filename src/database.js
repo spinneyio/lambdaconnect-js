@@ -249,6 +249,9 @@ export default class Database {
       // isSuitableForPush hooks
       const createHook = (primaryKey, object, transaction) => {
         if (!transaction.__syncTransaction) {
+          console.log(primaryKey, object, transaction);
+          transaction.abort();
+          return undefined;
           object.isSuitableForPush = 1;
           if (typeof object.uuid === 'undefined') {
             object.uuid = uuid();
