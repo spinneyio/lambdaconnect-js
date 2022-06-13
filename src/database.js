@@ -75,13 +75,11 @@ const initState: DatabaseState = {
   hasVersionChanged: false
 };
 
-function overrideAdd (db: Dexie) {
-  db.Table.prototype.add = Dexie.override(db.Table.prototype.add, function (oldAdd) {
-    return function (item) {
-      console.log(item);
-      return oldAdd.apply(this, arguments);
-    }
-  })
+function SafelyAdd(db: Dexie) {
+  db.Table.prototype.safelyAdd = function(item): Dexie.Promise<string> {
+    console.log(db, item, this);
+    return this.add(item);
+  }
 }
 
 export default class Database {
@@ -117,8 +115,8 @@ export default class Database {
       ...options,
     };
     this.syncInProgress = false;
+    Dexie.addons.push(SafelyAdd);
     this.dao = new Dexie(DATABASE_NAME, { autoOpen: false });
-    overrideAdd(this.dao);
     this.registeredViewModels = new Map<string, ViewModel>();
     this.viewModels = [];
     this.isInitialized = false;
@@ -249,6 +247,7 @@ export default class Database {
       // isSuitableForPush hooks
       const createHook = (primaryKey, object, transaction) => {
         if (!transaction.__syncTransaction) {
+          console.log(primaryKey, object, transaction);
           object.isSuitableForPush = 1;
           if (typeof object.uuid === 'undefined') {
             object.uuid = uuid();
