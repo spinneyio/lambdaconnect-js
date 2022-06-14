@@ -1,4 +1,4 @@
-//@flow
+// @flow
 
 // This is a non-secure but fast version of Java's String.hashCode method
 export default (input: string) : number => {

@@ -10,10 +10,11 @@ import SyncConflictError from './errors/SyncConflictError';
 
 import ViewModel from './view-model';
 import hashCode from './utils/hashCode';
-import type { DatabaseModel } from './utils/modelParser';
+import type { DatabaseModel, ValidationSchema } from './utils/types';
 import modelParser from './utils/modelParser';
 import DatabaseSyncError from "./errors/DatabaseSyncError";
 import DatabaseOpenError from "./errors/DatabaseOpenError";
+import validateDexieAdd from "src/utils/validateDexieAdd";
 
 export type DatabaseState = {
   status: 'uninitialized' | 'offline' | 'online',
@@ -75,13 +76,19 @@ const initState: DatabaseState = {
   hasVersionChanged: false
 };
 
-function overrideAdd (db: Dexie) {
-  db.Table.prototype.add = Dexie.override(db.Table.prototype.add, function (oldAdd) {
-    return function (item) {
-      console.log(item);
-      return oldAdd.apply(this, arguments);
+function GetSafelyAddPlugin(getValidationSchema: () => ValidationSchema) {
+  return function SafelyAdd(db: Dexie) {
+    db.Table.prototype.safelyAdd = function(item): Dexie.Promise<string> {
+      const validationSchema = getValidationSchema();
+      validateDexieAdd({
+        tableName: this.name,
+        objectToAdd: item,
+        validationSchema,
+      })
+      console.log(validationSchema, item, this);
+      return this.add(item);
     }
-  })
+  }
 }
 
 export default class Database {
@@ -94,6 +101,8 @@ export default class Database {
   store: Store;
 
   model: DatabaseModel;
+
+  validationSchema: ValidationSchema;
 
   options: DatabaseOptions;
 
@@ -117,8 +126,8 @@ export default class Database {
       ...options,
     };
     this.syncInProgress = false;
+    Dexie.addons.push(GetSafelyAddPlugin(() => this.getValidationSchema()));
     this.dao = new Dexie(DATABASE_NAME, { autoOpen: false });
-    overrideAdd(this.dao);
     this.registeredViewModels = new Map<string, ViewModel>();
     this.viewModels = [];
     this.isInitialized = false;
@@ -126,6 +135,10 @@ export default class Database {
 
   setRequestHeaders(headers: any): void {
     this.requestHeaders = headers;
+  }
+
+  getValidationSchema() {
+    return this.validationSchema;
   }
 
   makeServerRequest(
@@ -207,7 +220,9 @@ export default class Database {
       }
 
 
-      this.model = modelParser(modelResponse.model);
+      const { validationSchema, model } = modelParser(modelResponse.model);
+      this.model = model;
+      this.validationSchema = validationSchema;
 
       const indexes = (options && options.indexes) || {};
       const schema = Object.keys(this.model.entities)
@@ -250,8 +265,6 @@ export default class Database {
       const createHook = (primaryKey, object, transaction) => {
         if (!transaction.__syncTransaction) {
           console.log(primaryKey, object, transaction);
-          transaction.abort();
-          return undefined;
           object.isSuitableForPush = 1;
           if (typeof object.uuid === 'undefined') {
             object.uuid = uuid();
