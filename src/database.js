@@ -14,7 +14,7 @@ import type { DatabaseModel, ValidationSchema } from './utils/types';
 import modelParser from './utils/modelParser';
 import DatabaseSyncError from "./errors/DatabaseSyncError";
 import DatabaseOpenError from "./errors/DatabaseOpenError";
-import validateDexieAdd from "src/utils/validateDexieAdd";
+import validateDexieAdd from "./utils/validateDexieAdd";
 
 export type DatabaseState = {
   status: 'uninitialized' | 'offline' | 'online',
@@ -85,7 +85,6 @@ function GetSafelyAddPlugin(getValidationSchema: () => ValidationSchema) {
         objectToAdd: item,
         validationSchema,
       })
-      console.log(validationSchema, item, this);
       return this.add(item);
     }
   }
@@ -264,7 +263,6 @@ export default class Database {
       // isSuitableForPush hooks
       const createHook = (primaryKey, object, transaction) => {
         if (!transaction.__syncTransaction) {
-          console.log(primaryKey, object, transaction);
           object.isSuitableForPush = 1;
           if (typeof object.uuid === 'undefined') {
             object.uuid = uuid();

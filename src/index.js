@@ -5,6 +5,7 @@ import useViewModel from './use-view-model';
 import connectViewModel from './connect-view-model';
 import DatabaseSyncError from './errors/DatabaseSyncError';
 import SyncConflictError from './errors/SyncConflictError';
+import DatabaseValidationError from "./errors/DatabaseValidationError";
 
 export {
   Database,
@@ -12,6 +13,7 @@ export {
   useViewModel,
   connectViewModel,
   DatabaseSyncError,
-  SyncConflictError
+  SyncConflictError,
+  DatabaseValidationError,
 };
 

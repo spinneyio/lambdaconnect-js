@@ -2,7 +2,9 @@
 
 export type ValidationErrorData = {
   tableName: string,
-  failedConstraint: string,
+  failedConstraint: 'required' | 'typeError' | 'maxValue' | 'minValue' | 'maxLength'
+    | 'minLength' | 'regex' | 'unknownKey',
+  badAttribute: string,
   object: {[string]: any},
 }
 
