@@ -7,6 +7,8 @@ type ValidateDexieAddProperties = {
   tableName: string, objectToAdd: any, validationSchema: ValidationSchema
 }
 
+const isNullish = (value) => value === undefined || value === null;
+
 const autoAddedAttributes = ['uuid', 'active', 'createdAt', 'updatedAt'];
 
 /**
@@ -35,7 +37,7 @@ export default function validateDexieAdd({ tableName, objectToAdd, validationSch
     const { constraints, type } = selectedTableValidationSchema.attributes[attributeName];
 
     if (!constraints.required &&
-      (!objectAttributes.includes(attributeName) || objectToAdd[attributeName] === null)
+      (!objectAttributes.includes(attributeName) || isNullish(objectToAdd[attributeName]))
     ) {
       return;
     }

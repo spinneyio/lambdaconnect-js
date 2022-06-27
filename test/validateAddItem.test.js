@@ -49,7 +49,26 @@ const validationSchemaFragment = {
         }
       }
     },
-  }
+  },
+  NOUser: {
+    attributes: {
+      fullName: {
+        type: 'string',
+        constraints: {
+          required: true,
+          minLength: 1,
+          maxLength: 100,
+        },
+      },
+      gender: {
+        type: 'string',
+        constraints: {
+          minLength: 1,
+          regex: '(Male|Female|Other)'
+        }
+      }
+    },
+  },
 };
 
 const validationTableName = 'NOMealDetails';
@@ -63,10 +82,15 @@ const mealItemCorrect = {
   mealType: 'Snack'
 };
 
-const runValidateFunctionWithMockedData = (mockedObject) => validateDexieAdd({
+const userCorrect = {
+  fullName: 'Jane Doe',
+  gender: undefined,
+}
+
+const runValidateFunctionWithMockedData = (mockedObject, tableName = validationTableName) => validateDexieAdd({
   objectToAdd: mockedObject,
   validationSchema: validationSchemaFragment,
-  tableName: validationTableName,
+  tableName,
 })
 
 describe('add validation', () => {
@@ -153,5 +177,9 @@ describe('add validation', () => {
       expect(e.validationErrorData.failedConstraint).toEqual('unknownKey');
       expect(e.validationErrorData.badAttribute).toEqual('test');
     }
+  });
+
+  test("object with undefined non-required property passes", () => {
+    expect(() => runValidateFunctionWithMockedData(userCorrect, 'NOUser')).not.toThrow();
   });
 })
