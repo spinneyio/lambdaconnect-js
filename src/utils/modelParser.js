@@ -1,90 +1,147 @@
-//@flow
+// @flow
+
 import parser from 'fast-xml-parser';
 import he from 'he';
-
-export type DatabaseModel = {
-  version: number,
-  entities: {
-    [string]: DatabaseModelEntity,
-  },
-};
-
-export type DatabaseModelEntity = {
-  name: string,
-  syncable: boolean,
-  attributes: {
-    [string]: DatabaseModelEntityAttribute,
-  },
-};
-
-export type DatabaseModelEntityAttribute = {
-  name: string,
-  optional: boolean,
-  attributeType: string,
-  syncable: boolean,
-  indexed: true,
-};
+import type {
+  Constraints,
+  DatabaseModel,
+  RawAttribute,
+  RawEntity,
+  Type,
+  ValidationSchema
+} from "./types";
 
 const options = {
-  attributeNamePrefix : "@_",
+  attributeNamePrefix: "",
   attrNodeName: "attr", //default is 'false'
-  textNodeName : "#text",
-  ignoreAttributes : false,
-  ignoreNameSpace : false,
-  allowBooleanAttributes : true,
-  parseNodeValue : true,
-  parseAttributeValue : true,
+  textNodeName: "#text",
+  ignoreAttributes: false,
+  ignoreNameSpace: false,
+  allowBooleanAttributes: true,
+  parseNodeValue: true,
+  parseAttributeValue: true,
   trimValues: true,
-  cdataTagName: "__cdata", //default is 'false'
-  cdataPositionChar: "\\c",
   parseTrueNumberOnly: false,
   arrayMode: false, //"strict"
   attrValueProcessor: (val, attrName) => he.decode(val, {isAttributeValue: true}),//default is a=>a
-  tagValueProcessor : (val, tagName) => he.decode(val), //default is a=>a
-  stopNodes: ["parse-me-as-string"]
+  tagValueProcessor: (val, tagName) => he.decode(val), //default is a=>a
+  stopNodes: ["element", "elements"]
 };
 
-export default (xmlData: string) : DatabaseModel => {
-  const schema = {
+const numberTypes = ['Double', 'Integer 64', 'Integer 16', 'Integer 32', 'Float'];
+const stringTypes = ['String', 'Date', 'UUID', 'URI'];
+
+/**
+ * Get constraints and type of attribute for validation schema
+ *
+ * @param { RawAttribute.attr } attributeValues
+ * @returns {{ type: Type, constraints: Constraints }}
+ */
+function getAttributeConstraints(attributeValues): { type: Type, constraints: Constraints } {
+  let type = 'boolean';
+  if (numberTypes.includes(attributeValues.attributeType)) {
+    type = 'number';
+  }
+  if (stringTypes.includes(attributeValues.attributeType)) {
+    type = 'string';
+  }
+  const constraints: Constraints = {
+    required: true,
+  };
+  if (attributeValues.optional === 'YES') {
+    constraints.required = false;
+  }
+  if (typeof attributeValues.minValueString === 'number') {
+    if (type === 'number') {
+      constraints.minValue = attributeValues.minValueString;
+    } else {
+      constraints.minLength = attributeValues.minValueString;
+    }
+  }
+  if (typeof attributeValues.maxValueString === 'number') {
+    if (type === 'number') {
+      constraints.maxValue = attributeValues.maxValueString;
+    } else {
+      constraints.maxLength = attributeValues.maxValueString;
+    }
+  }
+  if (attributeValues.regularExpressionString) {
+    constraints.regex = attributeValues.regularExpressionString;
+  }
+  return {
+    type,
+    constraints,
+  }
+}
+
+/**
+ * @name modelParser
+ * Parse string XML data model to provide schema for Dexie database and validation schema for safelyAdd plugin
+ *
+ * @see safelyAdd
+ * @see {@link http://testing.telahealth.com/api/v1/data-model}
+ *
+ * @param { string } xmlData - Backend data-model XML in string format, typically from api/v1/data-model
+ * @returns {{ model: DatabaseModel, validationSchema: ValidationSchema }}
+ */
+export default (xmlData: string): { model: DatabaseModel, validationSchema: ValidationSchema } => {
+  const dbSchema = {
     version: 1,
     entities: {},
   };
+  const validationSchema = {};
 
   const jsonObj = parser.parse(xmlData, options);
-  const entities = jsonObj.model.entity;
-
-  for (const entity of entities){
-    const entitySchema = {
-      name: entity.attr['@_name'],
-      syncable: entity.attr['@_syncable'] === 'YES',
+  const entities: RawEntity[] = jsonObj.model.entity;
+  for (const entity of entities) {
+    const { name, syncable } = entity.attr;
+    const dbEntitySchema = {
+      name,
+      syncable: syncable === 'YES',
       attributes: {},
     };
-    for (const {attr} of entity.attribute) {
+    validationSchema[name] = {
+      attributes: {},
+      relationships: {},
+    };
+    for (const { attr } of entity.attribute) {
+      const { name: attributeName, optional, attributeType } = attr;
       const attributeSchema = {
-        name: attr['@_name'],
-        optional: attr['@_optional'] === 'YES',
-        attributeType: attr['@_attributeType'],
-        syncable: attr['@_syncable'] === 'YES',
+        name: attributeName,
+        optional: optional === 'YES',
+        attributeType,
         indexed: false,
       };
-      entitySchema.attributes[attributeSchema.name] = attributeSchema;
+      const { type, constraints } = getAttributeConstraints(attr)
+
+      dbEntitySchema.attributes[attributeName] = attributeSchema;
+      validationSchema[name].attributes[attributeName] = {type, constraints};
     }
 
     if (entity.relationship) {
-      for (const {attr} of Array.isArray(entity.relationship) ? entity.relationship : [entity.relationship]) {
+      for (const { attr } of Array.isArray(entity.relationship) ? entity.relationship : [entity.relationship]) {
+        const { name: attributeName, optional, destinationEntity, toMany } = attr;
         const attributeSchema = {
-          name: attr['@_name'],
-          optional: attr['@_optional'] === 'YES',
+          name: attributeName,
+          optional: optional === 'YES',
           attributeType: 'relationship',
-          syncable: attr['@_syncable'] === 'YES',
-          toMany: attr['@_toMany'] === 'YES',
+          toMany: toMany === 'YES',
         };
-        entitySchema.attributes[attributeSchema.name] = attributeSchema;
+        const relationValidationSchema = {
+          destinationEntity,
+          toMany: toMany === 'YES',
+        }
+
+        dbEntitySchema.attributes[attributeName] = attributeSchema;
+        validationSchema[name].relationships[attributeName] = relationValidationSchema;
       }
     }
 
-    schema.entities[entitySchema.name] = entitySchema;
+    dbSchema.entities[dbEntitySchema.name] = dbEntitySchema;
   }
 
-  return schema;
+  return {
+    model: dbSchema,
+    validationSchema,
+  };
 }

@@ -3,19 +3,18 @@
 import Promise from 'bluebird';
 import Dexie from 'dexie';
 import 'dexie-observable';
-import {
-  Action, combineReducers, Reducer, ReducersMapObject, Store,
-} from 'redux';
+import { Action, combineReducers, Reducer, ReducersMapObject, Store } from 'redux';
 import fetch from 'isomorphic-fetch';
 import { v1 as uuid } from 'uuid';
 import SyncConflictError from './errors/SyncConflictError';
 
 import ViewModel from './view-model';
 import hashCode from './utils/hashCode';
+import type { DatabaseModel, ValidationSchema } from './utils/types';
 import modelParser from './utils/modelParser';
-import type { DatabaseModel } from './utils/modelParser';
 import DatabaseSyncError from "./errors/DatabaseSyncError";
 import DatabaseOpenError from "./errors/DatabaseOpenError";
+import validateDexieAdd from "./utils/validateDexieAdd";
 
 export type DatabaseState = {
   status: 'uninitialized' | 'offline' | 'online',
@@ -55,7 +54,7 @@ export type DatabaseInitOptions = {
 
 export type DatabaseInitializationOptions = {
   truncate?: boolean,
-  indexes?: {[string]: [string]},
+  indexes?: { [string]: [string] },
 };
 
 const DATABASE_INITIALIZED = 'DATABASE_INITIALIZED';
@@ -68,7 +67,7 @@ const DATABASE_VERSION_CHANGED = 'DATABASE_VERSION_CHANGED';
 const LOCALSTORAGE_MODEL_HASH_KEY = 'lambdaconnect_model_hash';
 const DATABASE_NAME = 'lambdaconnect';
 
-const initState : DatabaseState = {
+const initState: DatabaseState = {
   status: 'uninitialized',
   lastSynchronization: 0,
   inProgress: false,
@@ -76,6 +75,20 @@ const initState : DatabaseState = {
   error: null,
   hasVersionChanged: false
 };
+
+function GetSafelyAddPlugin(getValidationSchema: () => ValidationSchema) {
+  return function SafelyAdd(db: Dexie) {
+    db.Table.prototype.safelyAdd = function(item): Dexie.Promise<string> {
+      const validationSchema = getValidationSchema();
+      validateDexieAdd({
+        tableName: this.name,
+        objectToAdd: item,
+        validationSchema,
+      })
+      return this.add(item);
+    }
+  }
+}
 
 export default class Database {
   dao: Dexie;
@@ -87,6 +100,8 @@ export default class Database {
   store: Store;
 
   model: DatabaseModel;
+
+  validationSchema: ValidationSchema;
 
   options: DatabaseOptions;
 
@@ -110,14 +125,19 @@ export default class Database {
       ...options,
     };
     this.syncInProgress = false;
+    Dexie.addons.push(GetSafelyAddPlugin(() => this.getValidationSchema()));
     this.dao = new Dexie(DATABASE_NAME, { autoOpen: false });
     this.registeredViewModels = new Map<string, ViewModel>();
     this.viewModels = [];
     this.isInitialized = false;
   }
 
-  setRequestHeaders(headers: any) : void {
+  setRequestHeaders(headers: any): void {
     this.requestHeaders = headers;
+  }
+
+  getValidationSchema() {
+    return this.validationSchema;
   }
 
   makeServerRequest(
@@ -126,7 +146,7 @@ export default class Database {
     headers?: any,
     body?: any,
     apiVersion: string = 'v1'
-  ) : Promise<any> {
+  ): Promise<any> {
     return fetch(`${this.options.apiUrl}/${apiVersion}/${path}`, {
       method,
       headers: {
@@ -138,7 +158,7 @@ export default class Database {
     });
   }
 
-  setReduxStore(store: Store) : void {
+  setReduxStore(store: Store): void {
     this.store = store;
 
     const defaultEqualityFunction = (left: any, right: any): boolean => left === right;
@@ -160,7 +180,7 @@ export default class Database {
     });
   }
 
-  async initialize(options?: DatabaseInitializationOptions) : Promise<void> {
+  async initialize(options?: DatabaseInitializationOptions): Promise<void> {
     if (!this.store) {
       throw new Error('Redux store is not set');
     }
@@ -199,7 +219,9 @@ export default class Database {
       }
 
 
-      this.model = modelParser(modelResponse.model);
+      const { validationSchema, model } = modelParser(modelResponse.model);
+      this.model = model;
+      this.validationSchema = validationSchema;
 
       const indexes = (options && options.indexes) || {};
       const schema = Object.keys(this.model.entities)
@@ -299,7 +321,7 @@ export default class Database {
     });
   }
 
-  async _monitoredBulkPut(entitiesToPush: {[string]: [{isSuitableForPush: boolean}]}, progressScale: number, progressOffset: number) {
+  async _monitoredBulkPut(entitiesToPush: { [string]: [{ isSuitableForPush: boolean }] }, progressScale: number, progressOffset: number) {
     const totalRecords = Object.keys(entitiesToPush)
       .reduce((acc, entityName) => acc + entitiesToPush[entityName].length, 0);
     let processedRecords = 0;
@@ -337,7 +359,7 @@ export default class Database {
     }
   }
 
-  async _syncPush() : Promise<void> {
+  async _syncPush(): Promise<void> {
     this._publishSyncProgress(0);
     const entitiesToPush = {};
     await Promise.mapSeries(Object.keys(this.model.entities), async (entityName) => {
@@ -405,7 +427,7 @@ export default class Database {
       const checkedRejectedFields = Object.keys(data['rejected-fields'])
         .filter((key) => {
           // flatten the rejected-fields of current object and filter out whitelisted field names
-          const  rejectedNotWhitelistedFields = Object.values(data['rejected-fields'][key])
+          const rejectedNotWhitelistedFields = Object.values(data['rejected-fields'][key])
             .flat().filter((fieldName) => !this.options.rejectionWhitelist.includes(fieldName))
           // remove the key from rejected-fields object when the object has been whitelisted or all of its rejected fields are whitelisted
           return !this.options.rejectionWhitelist.includes(key) && Boolean(rejectedNotWhitelistedFields.length);
@@ -420,7 +442,7 @@ export default class Database {
     }
   }
 
-  async _syncPull() : Promise<void> {
+  async _syncPull(): Promise<void> {
     this._publishSyncProgress(50);
     const entityLastRevisions = {};
     await Promise.mapSeries(Object.keys(this.model.entities), async (entityName) => {
@@ -445,7 +467,7 @@ export default class Database {
     await this._monitoredBulkPut(data, 25, 75);
   }
 
-  async sync() : Promise<void> {
+  async sync(): Promise<void> {
     this.syncInProgress = true;
     try {
       if (!this.options.disablePush) {
@@ -476,7 +498,7 @@ export default class Database {
     }
   }
 
-  async truncate() : Promise<void> {
+  async truncate(): Promise<void> {
     await Promise.mapSeries(Object.keys(this.model.entities), (entityName) => this.dao.table(entityName).clear());
   }
 
@@ -484,7 +506,7 @@ export default class Database {
     this.isChangesFrozen = isFrozen;
   }
 
-  reloadAllViewModels() : void {
+  reloadAllViewModels(): void {
     if (!this.dao.isOpen()) {
       console.warn('Database still not opened, aborting reload');
     }
@@ -495,13 +517,13 @@ export default class Database {
     });
   }
 
-  getReducer(viewModels: Array<ViewModel>) : ReducersMapObject {
+  getReducer(viewModels: Array<ViewModel>): ReducersMapObject {
     this.viewModels = viewModels;
     this.viewModels.forEach(((viewModel) => {
       viewModel.initialize(this);
     }));
 
-    const databaseReducer = (state: DatabaseState = initState, action: DatabaseAction) : DatabaseState => {
+    const databaseReducer = (state: DatabaseState = initState, action: DatabaseAction): DatabaseState => {
       switch (action.type) {
         case DATABASE_INITIALIZED:
           return {
