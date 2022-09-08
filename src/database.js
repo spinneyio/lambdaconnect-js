@@ -64,6 +64,8 @@ const DATABASE_SYNC_ERROR = 'DATABASE_SYNC_ERROR';
 const DATABASE_INITIALIZATION_ERROR = 'DATABASE_INITIALIZATION_ERROR';
 const DATABASE_VERSION_CHANGED = 'DATABASE_VERSION_CHANGED';
 
+const RESET_STATE = 'RESET_STATE';
+
 const LOCALSTORAGE_MODEL_HASH_KEY = 'lambdaconnect_model_hash';
 const DATABASE_NAME = 'lambdaconnect';
 
@@ -517,6 +519,20 @@ export default class Database {
     });
   }
 
+  /**
+   * Clear all lambdaconnect ViewModel redux state.
+   * All ViewModels return to initial state.
+   */
+  resetState(): void {
+    if (!this.dao.isOpen()) {
+      console.warn('Database still not opened, aborting reload');
+    }
+    const { dispatch } = this.store;
+    dispatch({
+      type: RESET_STATE,
+    });
+  }
+
   getReducer(viewModels: Array<ViewModel>): ReducersMapObject {
     this.viewModels = viewModels;
     this.viewModels.forEach(((viewModel) => {
@@ -574,7 +590,14 @@ export default class Database {
       database: databaseReducer,
     });
 
-    return combineReducers(reducers);
+    // returns all ViewModel reducers, database reducers
+    // and a special case for clearing all lambdaconnect state
+    return (state, action) => {
+      if (action.type === RESET_STATE) {
+        return combineReducers(reducers)(undefined, action)
+      }
+      return combineReducers(reducers)(state, action)
+    };
   }
 
   registerViewModel(viewModel: ViewModel, initialReloadParameters: ?any) {
