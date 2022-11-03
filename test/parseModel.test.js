@@ -33,6 +33,12 @@ const expectedModelParserResponseFragment = {
             required: true,
           },
         },
+        createdAt: {
+          type: 'date',
+          constraints: {
+            required: true,
+          },
+        },
         exerciseType: {
           type: 'string',
           constraints: {

@@ -10,8 +10,14 @@ const validationSchemaFragment = {
           required: true,
         }
       },
+      fakeBoolean: {
+        type: 'boolean',
+        constraints: {
+          required: false,
+        }
+      },
       eatTime: {
-        type: 'string',
+        type: 'date',
         constraints: {
           required: true,
         }
@@ -111,6 +117,28 @@ describe('add validation', () => {
       energyInKcal: undefined,
     })).toThrow(DatabaseValidationError);
   });
+
+  test('object with correct optional property', () => {
+    expect(() => runValidateFunctionWithMockedData({
+      ...mealItemCorrect,
+      fakeBoolean: 1,
+    })).not.toThrow();
+  })
+
+  test('object with numeric boolean property different than 0 or 1', () => {
+    expect(() => {
+      try {
+        runValidateFunctionWithMockedData({
+          ...mealItemCorrect,
+          fakeBoolean: 3,
+        })
+      } catch (e) {
+        expect(e).toBeInstanceOf(DatabaseValidationError);
+        expect(e.validationErrorData.failedConstraint).toEqual('typeError');
+        expect(e.validationErrorData.badAttribute).toEqual('fakeBoolean');
+      }
+    })
+  })
 
   test('object with wrong typed property throws correct error', () => {
     try {

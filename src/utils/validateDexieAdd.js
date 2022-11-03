@@ -11,6 +11,23 @@ const isNullish = (value) => value === undefined || value === null;
 
 const autoAddedAttributes = ['uuid', 'active', 'createdAt', 'updatedAt'];
 
+
+function isNumericBoolean(value) {
+  return value === 0 || value === 1;
+}
+
+function isISODate(value) {
+  if (typeof value !== 'string') {
+    return false;
+  }
+  if (value.length !== 24) {
+    return false;
+  }
+  const dateObj = new Date(value);
+  return !Number.isNaN(dateObj);
+}
+
+
 /**
  * @name validateDexieAdd
  *
@@ -35,9 +52,10 @@ export default function validateDexieAdd({ tableName, objectToAdd, validationSch
     }
 
     const { constraints, type } = selectedTableValidationSchema.attributes[attributeName];
+    const attributeValue = objectToAdd[attributeName];
 
     if (!constraints.required &&
-      (!objectAttributes.includes(attributeName) || isNullish(objectToAdd[attributeName]))
+      (!objectAttributes.includes(attributeName) || isNullish(attributeValue))
     ) {
       return;
     }
@@ -58,10 +76,29 @@ export default function validateDexieAdd({ tableName, objectToAdd, validationSch
     /**
      * Throw if type of attribute doesn't match
      */
-    if (typeof objectToAdd[attributeName] !== type) {
-      if (type !== 'boolean' && (objectToAdd[attributeName] !== 0 || objectToAdd[attributeName] !== 1)) {
+    if (typeof attributeValue !== type) {
+      if (type === 'boolean' || type === 'date') {
+        if (type === 'boolean' && !isNumericBoolean(attributeValue)) {
+          throw new DatabaseValidationError(
+            `Type of "${attributeName}" attribute is ${typeof attributeValue} but needs to be ${type}`, {
+              object: objectToAdd,
+              failedConstraint: 'typeError',
+              badAttribute: attributeName,
+              tableName,
+            })
+        }
+        if (type === 'date' && !isISODate(attributeValue)) {
+          throw new DatabaseValidationError(
+            `Type of "${attributeName}" attribute is ${typeof attributeValue} but needs to be ${type}`, {
+              object: objectToAdd,
+              failedConstraint: 'typeError',
+              badAttribute: attributeName,
+              tableName,
+            })
+        }
+      } else {
         throw new DatabaseValidationError(
-          `Type of "${attributeName}" attribute is ${typeof objectToAdd[attributeName]} but needs to be ${type}`, {
+          `Type of "${attributeName}" attribute is ${typeof attributeValue} but needs to be ${type}`, {
             object: objectToAdd,
             failedConstraint: 'typeError',
             badAttribute: attributeName,
@@ -73,9 +110,9 @@ export default function validateDexieAdd({ tableName, objectToAdd, validationSch
     /**
      * Throw if maxValue constraint is not met
      */
-    if (constraints.maxValue && objectToAdd[attributeName] > constraints.maxValue) {
+    if (constraints.maxValue && attributeValue > constraints.maxValue) {
       throw new DatabaseValidationError(
-        `Value of "${attributeName}" exceeded a max value of ${constraints.maxValue} with ${objectToAdd[attributeName]}`, {
+        `Value of "${attributeName}" exceeded a max value of ${constraints.maxValue} with ${attributeValue}`, {
           object: objectToAdd,
           badAttribute: attributeName,
           failedConstraint: 'maxValue',
@@ -86,9 +123,9 @@ export default function validateDexieAdd({ tableName, objectToAdd, validationSch
     /**
      * Throw if minValue constraint is not met
      */
-    if (constraints.minValue && objectToAdd[attributeName] < constraints.minValue) {
+    if (constraints.minValue && attributeValue < constraints.minValue) {
       throw new DatabaseValidationError(
-        `Value of "${attributeName}" = ${objectToAdd[attributeName]} is lower than a min value of ${constraints.minValue}`, {
+        `Value of "${attributeName}" = ${attributeValue} is lower than a min value of ${constraints.minValue}`, {
           object: objectToAdd,
           badAttribute: attributeName,
           failedConstraint: 'minValue',
@@ -99,9 +136,9 @@ export default function validateDexieAdd({ tableName, objectToAdd, validationSch
     /**
      * Throw if maxLength constraint is not met
      */
-    if (constraints.maxLength && objectToAdd[attributeName].length > constraints.maxLength) {
+    if (constraints.maxLength && attributeValue.length > constraints.maxLength) {
       throw new DatabaseValidationError(
-        `Length of "${attributeName}" exceed max length of ${constraints.maxLength} with ${objectToAdd[attributeName].length}`, {
+        `Length of "${attributeName}" exceed max length of ${constraints.maxLength} with ${attributeValue.length}`, {
           object: objectToAdd,
           badAttribute: attributeName,
           failedConstraint: 'maxLength',
@@ -112,9 +149,9 @@ export default function validateDexieAdd({ tableName, objectToAdd, validationSch
     /**
      * Throw if minValue constraint is not met
      */
-    if (constraints.minLength && objectToAdd[attributeName] < constraints.minLength) {
+    if (constraints.minLength && attributeValue < constraints.minLength) {
       throw new DatabaseValidationError(
-        `Length of "${attributeName}" = ${objectToAdd[attributeName].length} is lower than a min length of ${constraints.minLength}`, {
+        `Length of "${attributeName}" = ${attributeValue.length} is lower than a min length of ${constraints.minLength}`, {
           object: objectToAdd,
           badAttribute: attributeName,
           failedConstraint: 'minLength',
@@ -125,7 +162,7 @@ export default function validateDexieAdd({ tableName, objectToAdd, validationSch
     /**
      * Throw if regex does not match
      */
-    if (constraints.regex && !new RegExp(constraints.regex).test(objectToAdd[attributeName])) {
+    if (constraints.regex && !new RegExp(constraints.regex).test(attributeValue)) {
       throw new DatabaseValidationError(
         `"${attributeName}" attribute must match regular expression of ${constraints.regex}`, {
           object: objectToAdd,
