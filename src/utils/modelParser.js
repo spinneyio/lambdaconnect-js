@@ -29,7 +29,7 @@ const options = {
 };
 
 const numberTypes = ['Double', 'Integer 64', 'Integer 16', 'Integer 32', 'Float'];
-const stringTypes = ['String', 'Date', 'UUID', 'URI'];
+const stringTypes = ['String', 'UUID', 'URI'];
 
 /**
  * Get constraints and type of attribute for validation schema
@@ -44,6 +44,9 @@ function getAttributeConstraints(attributeValues): { type: Type, constraints: Co
   }
   if (stringTypes.includes(attributeValues.attributeType)) {
     type = 'string';
+  }
+  if (attributeValues.attributeType === 'Date') {
+    type = 'date';
   }
   const constraints: Constraints = {
     required: true,

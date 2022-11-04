@@ -66,7 +66,7 @@ export type RawEntity = {
 /**
  * Validation schema types
  */
-export type Type = 'string' | 'number' | 'boolean';
+export type Type = 'string' | 'number' | 'boolean' | 'date';
 export type Constraints = {
   required: boolean,
   minLength?: number,
