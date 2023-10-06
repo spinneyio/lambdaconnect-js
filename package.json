@@ -8,7 +8,9 @@
   "files": [
     "lib",
     "src",
-    "es"
+    "es",
+    "script/generateTypeDefs.js",
+    "script/generate-validation-schema.js"
   ],
   "scripts": {
     "build:commonjs": "cross-env BABEL_ENV=commonjs babel src --out-dir lib",
