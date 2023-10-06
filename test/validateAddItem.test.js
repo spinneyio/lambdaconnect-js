@@ -42,7 +42,7 @@ const validationSchemaFragment = {
         type: 'string',
         constraints: {
           required: false,
-          minLength: 0,
+          minLength: 1,
           maxLength: 100,
         }
       },
@@ -74,6 +74,16 @@ const validationSchemaFragment = {
         }
       }
     },
+    relationships: {
+      messagesReceived: {
+        destinationEntity: "NOMessage",
+        toMany: true
+      },
+      dietitian: {
+        destinationEntity: "NODietitian",
+        toMany: false
+      }
+    }
   },
 };
 
@@ -91,6 +101,8 @@ const mealItemCorrect = {
 const userCorrect = {
   fullName: 'Jane Doe',
   gender: undefined,
+  dietitian: "id1",
+  messagesReceived: ["id1", "id2"],
 }
 
 const runValidateFunctionWithMockedData = (mockedObject, tableName = validationTableName) => validateDexieAdd({
@@ -141,11 +153,15 @@ describe('add validation', () => {
   })
 
   test('object with wrong typed property throws correct error', () => {
+    const typeErrorMealItem = {
+      ...mealItemCorrect,
+      energyInKcal: 'twenty',
+    }
+
+    expect(() => runValidateFunctionWithMockedData(typeErrorMealItem)).toThrow(DatabaseValidationError);
+
     try {
-      runValidateFunctionWithMockedData({
-        ...mealItemCorrect,
-        energyInKcal: 'twenty',
-      });
+      runValidateFunctionWithMockedData(typeErrorMealItem);
     } catch (e) {
       expect(e).toBeInstanceOf(DatabaseValidationError);
       expect(e.validationErrorData.object.name).toEqual(mealItemCorrect.name);
@@ -156,11 +172,15 @@ describe('add validation', () => {
   });
 
   test("object with string property that doesn't match regex fails validation with correct error", () => {
+    const regexFailedMealItem = {
+      ...mealItemCorrect,
+      mealType: 'snack',
+    }
+
+    expect(() => runValidateFunctionWithMockedData(regexFailedMealItem)).toThrow(DatabaseValidationError);
+
     try {
-      runValidateFunctionWithMockedData({
-        ...mealItemCorrect,
-        mealType: 'snack',
-      });
+      runValidateFunctionWithMockedData(regexFailedMealItem);
     } catch (e) {
       expect(e).toBeInstanceOf(DatabaseValidationError);
       expect(e.validationErrorData.failedConstraint).toEqual('regex');
@@ -169,11 +189,15 @@ describe('add validation', () => {
   });
 
   test("object minLength failed fails validation with correct error", () => {
+    const minLengthFailedMealItem = {
+      ...mealItemCorrect,
+      nutritionixID: '',
+    }
+
+    expect(() => runValidateFunctionWithMockedData(minLengthFailedMealItem)).toThrow(DatabaseValidationError)
+
     try {
-      runValidateFunctionWithMockedData({
-        ...mealItemCorrect,
-        nutritionixID: '',
-      });
+      runValidateFunctionWithMockedData(minLengthFailedMealItem);
     } catch (e) {
       expect(e).toBeInstanceOf(DatabaseValidationError);
       expect(e.validationErrorData.failedConstraint).toEqual('minLength');
@@ -182,11 +206,15 @@ describe('add validation', () => {
   });
 
   test("object maxValue failed fails validation with correct error", () => {
+    const maxValueFailedMealItem = {
+      ...mealItemCorrect,
+      energyInKcal: 999999,
+    }
+
+    expect(() => runValidateFunctionWithMockedData(maxValueFailedMealItem)).toThrow(DatabaseValidationError)
+
     try {
-      runValidateFunctionWithMockedData({
-        ...mealItemCorrect,
-        energyInKcal: 999999,
-      });
+      runValidateFunctionWithMockedData(maxValueFailedMealItem);
     } catch (e) {
       expect(e).toBeInstanceOf(DatabaseValidationError);
       expect(e.validationErrorData.failedConstraint).toEqual('maxValue');
@@ -195,11 +223,15 @@ describe('add validation', () => {
   });
 
   test("object with additional unknown property fails validation with correct error", () => {
+    const unknownPropertyMealItem = {
+      ...mealItemCorrect,
+      test: 'test',
+    }
+
+    expect(() => runValidateFunctionWithMockedData(unknownPropertyMealItem)).toThrow(DatabaseValidationError)
+
     try {
-      runValidateFunctionWithMockedData({
-        ...mealItemCorrect,
-        test: 'test',
-      });
+      runValidateFunctionWithMockedData(unknownPropertyMealItem);
     } catch (e) {
       expect(e).toBeInstanceOf(DatabaseValidationError);
       expect(e.validationErrorData.failedConstraint).toEqual('unknownKey');
@@ -210,4 +242,94 @@ describe('add validation', () => {
   test("object with undefined non-required property passes", () => {
     expect(() => runValidateFunctionWithMockedData(userCorrect, 'NOUser')).not.toThrow();
   });
+})
+
+
+describe("relationship validations", () => {
+  test("string passed to a \"toMany\" relation throws appropriate error", () => {
+    const objectWithBadToManyRelation = {
+      ...userCorrect,
+      messagesReceived: "id1",
+    };
+
+    expect(() => runValidateFunctionWithMockedData(objectWithBadToManyRelation, 'NOUser')).toThrow(DatabaseValidationError)
+
+    try {
+      runValidateFunctionWithMockedData(objectWithBadToManyRelation, 'NOUser')
+    } catch (error) {
+      expect(error).toBeInstanceOf(DatabaseValidationError);
+      expect(error.validationErrorData.failedConstraint).toEqual('toMany');
+      expect(error.validationErrorData.badAttribute).toEqual('messagesReceived');
+    }
+  });
+
+  test("array of strings passed to a \"toOne\" relation throws appropriate error", () => {
+    const array = ["id1"];
+    const objectWithBadToOneRelation = {
+      ...userCorrect,
+      dietitian: array,
+    };
+
+    expect(() => runValidateFunctionWithMockedData(objectWithBadToOneRelation, 'NOUser')).toThrow(DatabaseValidationError)
+
+    try {
+      runValidateFunctionWithMockedData(objectWithBadToOneRelation, 'NOUser')
+    } catch (error) {
+      expect(error).toBeInstanceOf(DatabaseValidationError);
+      expect(error.validationErrorData.failedConstraint).toEqual('toOne');
+      expect(error.validationErrorData.badAttribute).toEqual('dietitian');
+    }
+
+    expect(() => runValidateFunctionWithMockedData(objectWithBadToOneRelation, 'NOUser')).toThrow()
+  });
+
+  test("undefined passed to a \"toOne\" relation passes", () => {
+    expect(() => runValidateFunctionWithMockedData({
+      ...userCorrect,
+      dietitian: undefined,
+    }, 'NOUser')).not.toThrow();
+  })
+
+  test("undefined passed to a \"toMany\" relation passes", () => {
+    expect(() => runValidateFunctionWithMockedData({
+      ...userCorrect,
+      messagesReceived: undefined,
+    }, 'NOUser')).not.toThrow();
+  })
+
+  test("array of not strings passed to a \"toMany\" relation throws appropriate error", () => {
+    const notStrings = [1, "null", null, new Date()];
+    const objectWithNonStringToManyRelations = {
+      ...userCorrect,
+      messagesReceived: notStrings,
+    };
+
+    expect(() => runValidateFunctionWithMockedData(objectWithNonStringToManyRelations, 'NOUser')).toThrow(DatabaseValidationError)
+
+    try {
+      runValidateFunctionWithMockedData(objectWithNonStringToManyRelations, 'NOUser')
+    } catch (error) {
+      expect(error).toBeInstanceOf(DatabaseValidationError);
+      expect(error.validationErrorData.failedConstraint).toEqual('toMany');
+      expect(error.validationErrorData.badAttribute).toEqual('messagesReceived');
+    }
+  });
+
+  test("not string passed to a \"toMany\" relation fails with appropriate error", () => {
+    const notString = 1;
+    const objectWithNonStringToManyRelations = {
+      ...userCorrect,
+      dietitian: notString,
+    };
+
+    expect(() => runValidateFunctionWithMockedData(objectWithNonStringToManyRelations, 'NOUser')).toThrow(DatabaseValidationError)
+
+    try {
+      runValidateFunctionWithMockedData(objectWithNonStringToManyRelations, 'NOUser')
+    } catch (error) {
+      expect(error).toBeInstanceOf(DatabaseValidationError);
+      expect(error.validationErrorData.failedConstraint).toEqual('toOne');
+      expect(error.validationErrorData.badAttribute).toEqual('dietitian');
+    }
+  })
 })

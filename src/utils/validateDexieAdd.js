@@ -10,6 +10,7 @@ type ValidateDexieAddProperties = {
 const isNullish = (value) => value === undefined || value === null;
 
 const autoAddedAttributes = ['uuid', 'active', 'createdAt', 'updatedAt'];
+const stringType = 'string';
 
 
 function isNumericBoolean(value) {
@@ -43,7 +44,6 @@ function isISODate(value) {
 export default function validateDexieAdd({ tableName, objectToAdd, validationSchema }: ValidateDexieAddProperties) {
   const selectedTableValidationSchema = validationSchema[tableName];
   const attributes = Object.keys(selectedTableValidationSchema.attributes);
-  const relations = selectedTableValidationSchema.relationships ? Object.keys(selectedTableValidationSchema.relationships) : [];
   const objectAttributes = Object.keys(objectToAdd);
 
   attributes.forEach((attributeName) => {
@@ -173,7 +173,77 @@ export default function validateDexieAdd({ tableName, objectToAdd, validationSch
     }
   });
 
-  const allPossibleAttributes = [...relations, ...attributes];
+  /**
+   * Validate relationships of added object
+   * All relations are marked as optional in the data model
+   * As such all relationFields should accept `null` or `undefined`
+   * Type of relationField should be `string` or `string[]` depending on the`toMany` property in the validation schema
+   */
+
+  const relationFields = selectedTableValidationSchema.relationships ? Object.keys(selectedTableValidationSchema.relationships) : [];
+
+  if (relationFields.length) {
+    for (const relationField of relationFields) {
+      const isToMany = selectedTableValidationSchema.relationships[relationField].toMany;
+
+      if (objectAttributes.includes(relationField) && !isNullish(objectToAdd[relationField])) {
+        const relationFieldValue = objectToAdd[relationField];
+
+        if (isToMany) {
+          if (!Array.isArray(relationFieldValue)) {
+            throw new DatabaseValidationError(
+              `"${relationField}" attribute is a toMany relationship but is not an array`, {
+                tableName,
+                object: objectToAdd,
+                badAttribute: relationField,
+                failedConstraint: 'toMany',
+              }
+            )
+          }
+
+          for (const relationValue of relationFieldValue) {
+            if (typeof relationValue !== stringType) {
+              throw new DatabaseValidationError(
+                `"${relationField}" attribute is a toMany relationship but contains a non-string value`, {
+                  tableName,
+                  object: objectToAdd,
+                  badAttribute: relationField,
+                  failedConstraint: 'toMany',
+                }
+              )
+            }
+          }
+        }
+
+        if (!isToMany) {
+          if (Array.isArray(relationFieldValue)) {
+            throw new DatabaseValidationError(
+              `"${relationField}" attribute is a toOne relationship but is an array`, {
+                tableName,
+                object: objectToAdd,
+                badAttribute: relationField,
+                failedConstraint: 'toOne',
+              }
+            )
+          }
+
+          if (typeof relationFieldValue !== stringType) {
+            throw new DatabaseValidationError(
+              `"${relationField}" attribute is a toOne relationship but contains a non-string value`, {
+                tableName,
+                object: objectToAdd,
+                badAttribute: relationField,
+                failedConstraint: 'toOne',
+              }
+            )
+          }
+        }
+      }
+    }
+  }
+
+  const allPossibleAttributes = [...relationFields, ...attributes];
+
   objectAttributes.forEach((objectAttribute) => {
     if (!allPossibleAttributes.includes(objectAttribute)) {
       throw new DatabaseValidationError(
