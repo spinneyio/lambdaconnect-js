@@ -1,24 +1,26 @@
-const fs = require('fs');
 const parser = require('fast-xml-parser');
 const he = require('he');
 const http = require('http');
 
-http.get('http://testing.telahealth.com/api/v1/data-model', (resp) => {
-  let data = '';
+function run(onProcessed) {
+  console.log('Fetching model')
+  http.get('http://testing.telahealth.com/api/v1/data-model', (resp) => {
+    let data = '';
 
-  resp.on('data', (chunk) => {
-    data += chunk;
-  });
+    resp.on('data', (chunk) => {
+      data += chunk;
+    });
 
-  resp.on('end', () => {
-    const { success, model } = JSON.parse(data);
-    if (!success) {
-      console.error("Couldn't fetch model");
-      process.exit(1);
-    }
-    onModelGetEnd(model);
-  });
-})
+    resp.on('end', () => {
+      const {success, model} = JSON.parse(data);
+      if (!success) {
+        console.error("Couldn't fetch model");
+        process.exit(1);
+      }
+      onModelGetEnd(model, onProcessed);
+    });
+  })
+}
 
 const nodeAttributesName = 'attr';
 const nodeNamesToDelete = [nodeAttributesName, 'elements'];
@@ -32,7 +34,7 @@ const objectsWithNameToNamedObjects = (arrayOfObjectsWithNameProperty) => arrayO
     return acc;
   }, {});
 
-const onModelGetEnd = (model) => {
+const onModelGetEnd = (model, onProcessed) => {
   if (!parser.validate(model)) {
     console.error("Invalid model");
     process.exit(1);
@@ -126,6 +128,11 @@ const onModelGetEnd = (model) => {
   })
 
   const namedEntities = objectsWithNameToNamedObjects(objects);
-
-  fs.writeFileSync('validationSchema.json', JSON.stringify(namedEntities));
+  onProcessed(namedEntities)
 }
+
+// run((schema) => {
+//   fs.writeFileSync("schema.json", JSON.stringify(schema));
+// })
+
+module.exports = run;
