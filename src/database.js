@@ -282,7 +282,8 @@ export default class Database {
             return undefined;
           }
           return {
-            isSuitableForPush: 1,
+            isSuitableForPush: modifications.__isSuitableForPush === 0 ? 0 : 1,
+            __isSuitableForPush: undefined,
             updatedAt: new Date().toISOString(),
             active: typeof modifications.active === 'number' ? modifications.active : 1,
           };
@@ -323,7 +324,7 @@ export default class Database {
     });
   }
 
-  async _monitoredBulkPut(entitiesToPush: { [string]: [{ isSuitableForPush: boolean }] }, progressScale: number, progressOffset: number) {
+  async _monitoredBulkPut(entitiesToPush: { [string]: [{ isSuitableForPush: 0 | 1 }] }, progressScale: number, progressOffset: number) {
     const totalRecords = Object.keys(entitiesToPush)
       .reduce((acc, entityName) => acc + entitiesToPush[entityName].length, 0);
     let processedRecords = 0;
@@ -346,7 +347,7 @@ export default class Database {
               const entitiesSlice = entities.slice(currentStart, currentStart + this.options.bulkPutLimit);
 
               for (const entity of entitiesSlice) {
-                entity.isSuitableForPush = false;
+                entity.isSuitableForPush = 0;
               }
 
               await this.dao.table(entityName).bulkPut((entitiesSlice));
