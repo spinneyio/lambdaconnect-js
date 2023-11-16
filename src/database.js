@@ -445,13 +445,25 @@ export default class Database {
     }
   }
 
-  async _syncPull(): Promise<void> {
+  async _syncPull(pullOptions?: { forcePullAll?: boolean }): Promise<void> {
     this._publishSyncProgress(50);
     const entityLastRevisions = {};
-    await Promise.mapSeries(Object.keys(this.model.entities), async (entityName) => {
-      const lastSyncRevision = (await this.dao.table(entityName).orderBy('syncRevision').last() || {}).syncRevision;
-      entityLastRevisions[entityName] = lastSyncRevision ? lastSyncRevision + 1 : 0;
-    });
+
+    const entityNames = Object.keys(this.model.entities);
+
+    /**
+     * If forcePullAll is true, we want to pull all scoped data from the server, not just the changes.
+     */
+    if (pullOptions?.forcePullAll) {
+      entityNames.forEach((entityName) => {
+        entityLastRevisions[entityName] = 0;
+      });
+    } else {
+      await Promise.mapSeries(entityNames, async (entityName) => {
+        const lastSyncRevision = (await this.dao.table(entityName).orderBy('syncRevision').last() || {}).syncRevision;
+        entityLastRevisions[entityName] = lastSyncRevision ? lastSyncRevision + 1 : 0;
+      });
+    }
 
     const pullResponse = await this.makeServerRequest(this.options.pullPath, 'POST', {}, entityLastRevisions);
     if (pullResponse.status !== 200) {
@@ -470,14 +482,14 @@ export default class Database {
     await this._monitoredBulkPut(data, 25, 75);
   }
 
-  async sync(): Promise<void> {
+  async sync(syncOptions?: { skipPush?: boolean, skipPull?: boolean, forcePullAll?: boolean }): Promise<void> {
     this.syncInProgress = true;
     try {
-      if (!this.options.disablePush) {
+      if (!this.options.disablePush && !syncOptions?.skipPush) {
         await this._syncPush();
       }
-      if (!this.options.disablePull) {
-        await this._syncPull();
+      if (!this.options.disablePull && !syncOptions?.skipPull) {
+        await this._syncPull(syncOptions?.forcePullAll ? { forcePullAll: true } : undefined);
       } else {
         // disablePull flag can be set to true
         // if the server responds with "Try again" while pushing data
