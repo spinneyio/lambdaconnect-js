@@ -410,6 +410,7 @@ export default class Database {
           pushPayload: entitiesToPush,
           error: errorContent ? errorContent.errors?.english?.push : `Server responded with ${pushResponse.status}`,
           type: 'push',
+          code: errorContent?.['error-code'] || -1,
         });
       }
 
@@ -421,7 +422,8 @@ export default class Database {
           error: data.errors?.english
             ? Object.values(data.errors.english)?.[0]
             : `Server responded with error code ${data['error-code']}`,
-          type: 'push'
+          type: 'push',
+          code: data['error-code'] || -1,
         })
       }
 
@@ -466,15 +468,16 @@ export default class Database {
     }
 
     const pullResponse = await this.makeServerRequest(this.options.pullPath, 'POST', {}, entityLastRevisions);
-    if (pullResponse.status !== 200) {
-      throw new DatabaseSyncError(`Error while pushing data to server: ${pullResponse.status}`, {
-        type: 'pull'
-      });
+    let body;
+    try {
+      body = await pullResponse.json();
+    } catch {
+      body = null;
     }
-    const body = await pullResponse.json();
-    if (!body.success) {
-      throw new DatabaseSyncError(`Server responded with error code: ${body['error-code']}`, {
-        type: 'pull'
+    if (pullResponse.status !== 200 || !body || !body.success) {
+      throw new DatabaseSyncError(`Error while pushing data to server: ${pullResponse.status}`, {
+        type: 'pull',
+        code: body?.['error-code'] || -1,
       });
     }
     const data = JSON.parse(body.data);

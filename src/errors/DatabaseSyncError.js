@@ -1,7 +1,7 @@
 export type ErrorData = {
   error?: string,
   pushPayload?: {[string]: Array<any>},
-  origin?: Error,
+  code?: number,
   type: 'push' | 'pull',
 }
 
