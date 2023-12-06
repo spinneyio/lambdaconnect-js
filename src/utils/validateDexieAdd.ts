@@ -1,24 +1,24 @@
-// @flow
-
-import type { ValidationSchema } from "../utils/types";
+import { ValidationSchema } from "./types";
 import DatabaseValidationError from "../errors/DatabaseValidationError";
 
 type ValidateDexieAddProperties = {
-  tableName: string, objectToAdd: any, validationSchema: ValidationSchema
-}
+  tableName: string;
+  objectToAdd: any;
+  validationSchema: ValidationSchema;
+};
 
-const isNullish = (value) => value === undefined || value === null;
+const isNullish = (value: any): value is undefined | null =>
+  value === undefined || value === null;
 
-const autoAddedAttributes = ['uuid', 'active', 'createdAt', 'updatedAt'];
-const stringType = 'string';
+const autoAddedAttributes = ["uuid", "active", "createdAt", "updatedAt"];
+const stringType = "string";
 
-
-function isNumericBoolean(value) {
+function isNumericBoolean(value: any): value is 0 | 1 {
   return value === 0 || value === 1;
 }
 
-function isISODate(value) {
-  if (typeof value !== 'string') {
+function isISODate(value: any): value is string {
+  if (typeof value !== "string") {
     return false;
   }
   if (value.length !== 24) {
@@ -27,7 +27,6 @@ function isISODate(value) {
   const dateObj = new Date(value);
   return !Number.isNaN(dateObj);
 }
-
 
 /**
  * @name validateDexieAdd
@@ -41,9 +40,15 @@ function isISODate(value) {
  * @see modelParser
  * @see safelyAdd
  */
-export default function validateDexieAdd({ tableName, objectToAdd, validationSchema }: ValidateDexieAddProperties) {
+export default function validateDexieAdd({
+  tableName,
+  objectToAdd,
+  validationSchema,
+}: ValidateDexieAddProperties) {
   const selectedTableValidationSchema = validationSchema[tableName];
-  const attributes = Object.keys(selectedTableValidationSchema.attributes);
+  const attributes = Object.keys(
+    selectedTableValidationSchema?.attributes ?? {},
+  );
   const objectAttributes = Object.keys(objectToAdd);
 
   attributes.forEach((attributeName) => {
@@ -51,10 +56,16 @@ export default function validateDexieAdd({ tableName, objectToAdd, validationSch
       return;
     }
 
-    const { constraints, type } = selectedTableValidationSchema.attributes[attributeName];
+    const { constraints, type } =
+      selectedTableValidationSchema?.attributes[attributeName] ?? {};
     const attributeValue = objectToAdd[attributeName];
 
-    if (!constraints.required &&
+    if (!constraints || !type) {
+      return;
+    }
+
+    if (
+      !constraints.required &&
       (!objectAttributes.includes(attributeName) || isNullish(attributeValue))
     ) {
       return;
@@ -65,45 +76,53 @@ export default function validateDexieAdd({ tableName, objectToAdd, validationSch
      */
     if (constraints.required && !objectAttributes.includes(attributeName)) {
       throw new DatabaseValidationError(
-        `No required "${attributeName}" attribute in ${tableName} object`, {
+        `No required "${attributeName}" attribute in ${tableName} object`,
+        {
           object: objectToAdd,
-          failedConstraint: 'required',
+          failedConstraint: "required",
           badAttribute: attributeName,
           tableName,
-        })
+        },
+      );
     }
 
     /**
      * Throw if type of attribute doesn't match
      */
     if (typeof attributeValue !== type) {
-      if (type === 'boolean' || type === 'date') {
-        if (type === 'boolean' && !isNumericBoolean(attributeValue)) {
+      if (type === "boolean" || type === "date") {
+        if (type === "boolean" && !isNumericBoolean(attributeValue)) {
           throw new DatabaseValidationError(
-            `Type of "${attributeName}" attribute is ${typeof attributeValue} but needs to be ${type}`, {
+            `Type of "${attributeName}" attribute is ${typeof attributeValue} but needs to be ${type}`,
+            {
               object: objectToAdd,
-              failedConstraint: 'typeError',
+              failedConstraint: "typeError",
               badAttribute: attributeName,
               tableName,
-            })
+            },
+          );
         }
-        if (type === 'date' && !isISODate(attributeValue)) {
+        if (type === "date" && !isISODate(attributeValue)) {
           throw new DatabaseValidationError(
-            `Type of "${attributeName}" attribute is ${typeof attributeValue} but needs to be ${type}`, {
+            `Type of "${attributeName}" attribute is ${typeof attributeValue} but needs to be ${type}`,
+            {
               object: objectToAdd,
-              failedConstraint: 'typeError',
+              failedConstraint: "typeError",
               badAttribute: attributeName,
               tableName,
-            })
+            },
+          );
         }
       } else {
         throw new DatabaseValidationError(
-          `Type of "${attributeName}" attribute is ${typeof attributeValue} but needs to be ${type}`, {
+          `Type of "${attributeName}" attribute is ${typeof attributeValue} but needs to be ${type}`,
+          {
             object: objectToAdd,
-            failedConstraint: 'typeError',
+            failedConstraint: "typeError",
             badAttribute: attributeName,
             tableName,
-          })
+          },
+        );
       }
     }
 
@@ -112,12 +131,14 @@ export default function validateDexieAdd({ tableName, objectToAdd, validationSch
      */
     if (constraints.maxValue && attributeValue > constraints.maxValue) {
       throw new DatabaseValidationError(
-        `Value of "${attributeName}" exceeded a max value of ${constraints.maxValue} with ${attributeValue}`, {
+        `Value of "${attributeName}" exceeded a max value of ${constraints.maxValue} with ${attributeValue}`,
+        {
           object: objectToAdd,
           badAttribute: attributeName,
-          failedConstraint: 'maxValue',
+          failedConstraint: "maxValue",
           tableName,
-        })
+        },
+      );
     }
 
     /**
@@ -125,25 +146,32 @@ export default function validateDexieAdd({ tableName, objectToAdd, validationSch
      */
     if (constraints.minValue && attributeValue < constraints.minValue) {
       throw new DatabaseValidationError(
-        `Value of "${attributeName}" = ${attributeValue} is lower than a min value of ${constraints.minValue}`, {
+        `Value of "${attributeName}" = ${attributeValue} is lower than a min value of ${constraints.minValue}`,
+        {
           object: objectToAdd,
           badAttribute: attributeName,
-          failedConstraint: 'minValue',
+          failedConstraint: "minValue",
           tableName,
-        })
+        },
+      );
     }
 
     /**
      * Throw if maxLength constraint is not met
      */
-    if (constraints.maxLength && attributeValue.length > constraints.maxLength) {
+    if (
+      constraints.maxLength &&
+      attributeValue.length > constraints.maxLength
+    ) {
       throw new DatabaseValidationError(
-        `Length of "${attributeName}" exceed max length of ${constraints.maxLength} with ${attributeValue.length}`, {
+        `Length of "${attributeName}" exceed max length of ${constraints.maxLength} with ${attributeValue.length}`,
+        {
           object: objectToAdd,
           badAttribute: attributeName,
-          failedConstraint: 'maxLength',
+          failedConstraint: "maxLength",
           tableName,
-        })
+        },
+      );
     }
 
     /**
@@ -151,25 +179,32 @@ export default function validateDexieAdd({ tableName, objectToAdd, validationSch
      */
     if (constraints.minLength && attributeValue < constraints.minLength) {
       throw new DatabaseValidationError(
-        `Length of "${attributeName}" = ${attributeValue.length} is lower than a min length of ${constraints.minLength}`, {
+        `Length of "${attributeName}" = ${attributeValue.length} is lower than a min length of ${constraints.minLength}`,
+        {
           object: objectToAdd,
           badAttribute: attributeName,
-          failedConstraint: 'minLength',
+          failedConstraint: "minLength",
           tableName,
-        })
+        },
+      );
     }
 
     /**
      * Throw if regex does not match
      */
-    if (constraints.regex && !new RegExp(constraints.regex).test(attributeValue)) {
+    if (
+      constraints.regex &&
+      !new RegExp(constraints.regex).test(attributeValue)
+    ) {
       throw new DatabaseValidationError(
-        `"${attributeName}" attribute must match regular expression of ${constraints.regex}`, {
+        `"${attributeName}" attribute must match regular expression of ${constraints.regex}`,
+        {
           object: objectToAdd,
           badAttribute: attributeName,
-          failedConstraint: 'regex',
+          failedConstraint: "regex",
           tableName,
-        })
+        },
+      );
     }
   });
 
@@ -180,37 +215,45 @@ export default function validateDexieAdd({ tableName, objectToAdd, validationSch
    * Type of relationField should be `string` or `string[]` depending on the`toMany` property in the validation schema
    */
 
-  const relationFields = selectedTableValidationSchema.relationships ? Object.keys(selectedTableValidationSchema.relationships) : [];
+  const relationFields = selectedTableValidationSchema?.relationships
+    ? Object.keys(selectedTableValidationSchema.relationships)
+    : [];
 
   if (relationFields.length) {
     for (const relationField of relationFields) {
-      const isToMany = selectedTableValidationSchema.relationships[relationField].toMany;
+      const isToMany =
+        !!selectedTableValidationSchema?.relationships?.[relationField]?.toMany;
 
-      if (objectAttributes.includes(relationField) && !isNullish(objectToAdd[relationField])) {
+      if (
+        objectAttributes.includes(relationField) &&
+        !isNullish(objectToAdd[relationField])
+      ) {
         const relationFieldValue = objectToAdd[relationField];
 
         if (isToMany) {
           if (!Array.isArray(relationFieldValue)) {
             throw new DatabaseValidationError(
-              `"${relationField}" attribute is a toMany relationship but is not an array`, {
+              `"${relationField}" attribute is a toMany relationship but is not an array`,
+              {
                 tableName,
                 object: objectToAdd,
                 badAttribute: relationField,
-                failedConstraint: 'toMany',
-              }
-            )
+                failedConstraint: "toMany",
+              },
+            );
           }
 
           for (const relationValue of relationFieldValue) {
             if (typeof relationValue !== stringType) {
               throw new DatabaseValidationError(
-                `"${relationField}" attribute is a toMany relationship but contains a non-string value`, {
+                `"${relationField}" attribute is a toMany relationship but contains a non-string value`,
+                {
                   tableName,
                   object: objectToAdd,
                   badAttribute: relationField,
-                  failedConstraint: 'toMany',
-                }
-              )
+                  failedConstraint: "toMany",
+                },
+              );
             }
           }
         }
@@ -218,24 +261,26 @@ export default function validateDexieAdd({ tableName, objectToAdd, validationSch
         if (!isToMany) {
           if (Array.isArray(relationFieldValue)) {
             throw new DatabaseValidationError(
-              `"${relationField}" attribute is a toOne relationship but is an array`, {
+              `"${relationField}" attribute is a toOne relationship but is an array`,
+              {
                 tableName,
                 object: objectToAdd,
                 badAttribute: relationField,
-                failedConstraint: 'toOne',
-              }
-            )
+                failedConstraint: "toOne",
+              },
+            );
           }
 
           if (typeof relationFieldValue !== stringType) {
             throw new DatabaseValidationError(
-              `"${relationField}" attribute is a toOne relationship but contains a non-string value`, {
+              `"${relationField}" attribute is a toOne relationship but contains a non-string value`,
+              {
                 tableName,
                 object: objectToAdd,
                 badAttribute: relationField,
-                failedConstraint: 'toOne',
-              }
-            )
+                failedConstraint: "toOne",
+              },
+            );
           }
         }
       }
@@ -247,13 +292,14 @@ export default function validateDexieAdd({ tableName, objectToAdd, validationSch
   objectAttributes.forEach((objectAttribute) => {
     if (!allPossibleAttributes.includes(objectAttribute)) {
       throw new DatabaseValidationError(
-        `"${objectAttribute}" attribute does not exist on ${tableName} object`, {
+        `"${objectAttribute}" attribute does not exist on ${tableName} object`,
+        {
           tableName,
           object: objectToAdd,
           badAttribute: objectAttribute,
-          failedConstraint: 'unknownKey',
-        }
-      )
+          failedConstraint: "unknownKey",
+        },
+      );
     }
-  })
+  });
 }

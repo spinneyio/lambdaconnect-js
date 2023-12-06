@@ -1,5 +1,5 @@
 const fs = require('fs');
-const getValidationSchema = require('./generate-validation-schema')
+const getValidationSchema = require('./generate-validation-schema');
 
 
 if (!process.argv[2]) {

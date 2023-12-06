@@ -1,8 +1,8 @@
 export type SyncConflictErrorData = {
-  rejectedObjects: {[String]: Array<mixed>},
-  rejectedFields: {[String]: Array<mixed>},
-  pushPayload: {[String]: Array<mixed>}
-}
+  rejectedObjects: Record<string, Array<any>>;
+  rejectedFields: Record<string, Array<any>>;
+  pushPayload: Record<string, Array<any>>;
+};
 
 export class SyncConflictError extends Error {
   errorData: SyncConflictErrorData;
@@ -10,7 +10,7 @@ export class SyncConflictError extends Error {
   constructor(message: string, errorData: SyncConflictErrorData) {
     super(message);
     this.errorData = errorData;
-    this.name = 'SyncConflictError';
+    this.name = "SyncConflictError";
   }
 }
 
