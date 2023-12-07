@@ -93,11 +93,23 @@ function GetSafelyAddPlugin(
   };
 }
 
+export type AutoCreatedEntityFields = {
+  uuid: string;
+  active: 0 | 1;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type DataAccessObject = Omit<Dexie, "table"> & {
-  table: <T = any, TKey = IndexableType>(
+  table: <T, TKey = IndexableType>(
     tableName: string,
-  ) => Dexie.Table<T, TKey> & {
-    safelyAdd: (item: T) => PromiseExtended<TKey>;
+  ) => Omit<Dexie.Table<T, TKey>, "add"> & {
+    safelyAdd: (
+      item: (T extends AutoCreatedEntityFields
+        ? Omit<T, "uuid" | "active" | "createdAt" | "updatedAt">
+        : T) &
+        Partial<AutoCreatedEntityFields>,
+    ) => PromiseExtended<TKey>;
   };
 };
 
@@ -382,24 +394,18 @@ export default class Database<
     // entitiesToPush: { [string]: [{ isSuitableForPush: 0 | 1 }] },
     entitiesToPush: Record<string, Array<BaseEntity>>,
   ) {
-    await this.dao.transaction(
-      "rw!",
-      Object.keys(entitiesToPush).map((entityName) =>
-        this.dao.table(entityName),
-      ),
-      async () => {
-        // @ts-ignore needed to skip table hooks on sync transactions
-        Dexie.currentTransaction.__syncTransaction = true;
+    await this.dao.transaction("rw!", Object.keys(entitiesToPush), async () => {
+      // @ts-ignore needed to skip table hooks on sync transactions
+      Dexie.currentTransaction.__syncTransaction = true;
 
-        for (const entityName of Object.keys(entitiesToPush)) {
-          const entities = entitiesToPush[entityName]!;
-          for (const entity of entities) {
-            entity.isSuitableForPush = 0;
-          }
-          await this.dao.table(entityName).bulkPut(entities);
+      for (const entityName of Object.keys(entitiesToPush)) {
+        const entities = entitiesToPush[entityName]!;
+        for (const entity of entities) {
+          entity.isSuitableForPush = 0;
         }
-      },
-    );
+        await this.dao.table(entityName).bulkPut(entities);
+      }
+    });
   }
 
   async _syncPush(): Promise<void> {
@@ -590,7 +596,7 @@ export default class Database<
       const syncRevisions = await Promise.all(
         entityNames.map(async (entityName) => {
           const lastSyncRevisionEntity = await this.dao
-            .table(entityName)
+            .table<BaseEntity>(entityName)
             .orderBy("syncRevision")
             .last();
           const lastSyncRevision: number | undefined =

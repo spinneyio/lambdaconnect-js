@@ -109,4 +109,5 @@ export type BaseEntity = {
   isSuitableForPush: 0 | 1;
   createdAt: string;
   updatedAt: string;
+  syncRevision?: number;
 };
