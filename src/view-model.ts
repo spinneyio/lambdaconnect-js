@@ -45,7 +45,7 @@ class ViewModel<
   Properties = undefined,
   SelectedState = undefined,
 > {
-  private readonly binding: Binding<BindingResult, Properties, SelectedState>;
+  readonly binding: Binding<BindingResult, Properties, SelectedState>;
 
   private database: Database<Array<this>> | null;
 
