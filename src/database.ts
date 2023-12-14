@@ -1,9 +1,7 @@
 import Dexie, { IndexableType, PromiseExtended, Transaction } from "dexie";
 import "dexie-observable";
 import {
-  // combineReducers,
   Reducer,
-  // ReducersMapObject,
   Store,
   UnknownAction,
 } from "redux";
@@ -426,6 +424,10 @@ export default class Database<
           .where("isSuitableForPush")
           .equals(1)
           .toArray();
+        for (const entity of entities) {
+          // @ts-ignore
+          delete entity.isSuitableForPush;
+        }
         if (entities.length === 0) {
           return;
         }
