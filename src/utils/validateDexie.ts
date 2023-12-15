@@ -1,9 +1,10 @@
 import { ValidationSchema } from "./types";
 import DatabaseValidationError from "../errors/DatabaseValidationError";
 
-type ValidateDexieAddProperties = {
+type ValidateDexieProperties = {
   tableName: string;
   objectToAdd: any;
+  checkRequired: boolean;
   validationSchema: ValidationSchema;
 };
 
@@ -29,44 +30,54 @@ function isISODate(value: any): value is string {
 }
 
 /**
- * @name validateDexieAdd
+ * @name validateDexie
  *
- * @param { string } tableName - Key of IDB object store - 'NO*'
- * @param { * } objectToAdd - Object to be added to tableName
- * @param { ValidationSchema } validationSchema - JSON schema generated from data-model
+ * @param tableName - Key of IDB object store - 'NO*'
+ * @param objectToAdd - Object to be added to tableName
+ * @param validationSchema - JSON schema generated from data-model
+ * @param checkRequired - If true, will throw if required attribute is missing,
+ * should be set to true when validating created objects and false when validating updated objects
  *
  * @throws { DatabaseValidationError } - Will throw if objectToAdd fails validationSchema constraint
  *
  * @see modelParser
  * @see safelyAdd
  */
-export default function validateDexieAdd({
+export default function validateDexie({
   tableName,
   objectToAdd,
   validationSchema,
-}: ValidateDexieAddProperties) {
+  checkRequired,
+}: ValidateDexieProperties) {
   const selectedTableValidationSchema = validationSchema[tableName];
-  const attributes = Object.keys(
+  const modelAttributes = Object.keys(
     selectedTableValidationSchema?.attributes ?? {},
   );
   const objectAttributes = Object.keys(objectToAdd);
 
-  attributes.forEach((attributeName) => {
-    if (autoAddedAttributes.includes(attributeName)) {
+  modelAttributes.forEach((modelAttributeName) => {
+    /**
+     * Skip auto added attributes
+     */
+    if (autoAddedAttributes.includes(modelAttributeName)) {
       return;
     }
 
     const { constraints, type } =
-      selectedTableValidationSchema?.attributes[attributeName] ?? {};
-    const attributeValue = objectToAdd[attributeName];
+      selectedTableValidationSchema?.attributes[modelAttributeName] ?? {};
+    const attributeValue = objectToAdd[modelAttributeName];
 
+    /**
+     * Keep TS happy
+     */
     if (!constraints || !type) {
       return;
     }
 
     if (
       !constraints.required &&
-      (!objectAttributes.includes(attributeName) || isNullish(attributeValue))
+      (!objectAttributes.includes(modelAttributeName) ||
+        isNullish(attributeValue))
     ) {
       return;
     }
@@ -74,13 +85,17 @@ export default function validateDexieAdd({
     /**
      * Throw if there is no required attribute
      */
-    if (constraints.required && !objectAttributes.includes(attributeName)) {
+    if (
+      checkRequired &&
+      constraints.required &&
+      !objectAttributes.includes(modelAttributeName)
+    ) {
       throw new DatabaseValidationError(
-        `No required "${attributeName}" attribute in ${tableName} object`,
+        `No required "${modelAttributeName}" attribute in ${tableName} object`,
         {
           object: objectToAdd,
           failedConstraint: "required",
-          badAttribute: attributeName,
+          badAttribute: modelAttributeName,
           tableName,
         },
       );
@@ -93,33 +108,33 @@ export default function validateDexieAdd({
       if (type === "boolean" || type === "date") {
         if (type === "boolean" && !isNumericBoolean(attributeValue)) {
           throw new DatabaseValidationError(
-            `Type of "${attributeName}" attribute is ${typeof attributeValue} but needs to be ${type}`,
+            `Type of "${modelAttributeName}" attribute is ${typeof attributeValue} but needs to be ${type}`,
             {
               object: objectToAdd,
               failedConstraint: "typeError",
-              badAttribute: attributeName,
+              badAttribute: modelAttributeName,
               tableName,
             },
           );
         }
         if (type === "date" && !isISODate(attributeValue)) {
           throw new DatabaseValidationError(
-            `Type of "${attributeName}" attribute is ${typeof attributeValue} but needs to be ${type}`,
+            `Type of "${modelAttributeName}" attribute is ${typeof attributeValue} but needs to be ${type}`,
             {
               object: objectToAdd,
               failedConstraint: "typeError",
-              badAttribute: attributeName,
+              badAttribute: modelAttributeName,
               tableName,
             },
           );
         }
       } else {
         throw new DatabaseValidationError(
-          `Type of "${attributeName}" attribute is ${typeof attributeValue} but needs to be ${type}`,
+          `Type of "${modelAttributeName}" attribute is ${typeof attributeValue} but needs to be ${type}`,
           {
             object: objectToAdd,
             failedConstraint: "typeError",
-            badAttribute: attributeName,
+            badAttribute: modelAttributeName,
             tableName,
           },
         );
@@ -131,10 +146,10 @@ export default function validateDexieAdd({
      */
     if (constraints.maxValue && attributeValue > constraints.maxValue) {
       throw new DatabaseValidationError(
-        `Value of "${attributeName}" exceeded a max value of ${constraints.maxValue} with ${attributeValue}`,
+        `Value of "${modelAttributeName}" exceeded a max value of ${constraints.maxValue} with ${attributeValue}`,
         {
           object: objectToAdd,
-          badAttribute: attributeName,
+          badAttribute: modelAttributeName,
           failedConstraint: "maxValue",
           tableName,
         },
@@ -146,10 +161,10 @@ export default function validateDexieAdd({
      */
     if (constraints.minValue && attributeValue < constraints.minValue) {
       throw new DatabaseValidationError(
-        `Value of "${attributeName}" = ${attributeValue} is lower than a min value of ${constraints.minValue}`,
+        `Value of "${modelAttributeName}" = ${attributeValue} is lower than a min value of ${constraints.minValue}`,
         {
           object: objectToAdd,
-          badAttribute: attributeName,
+          badAttribute: modelAttributeName,
           failedConstraint: "minValue",
           tableName,
         },
@@ -164,10 +179,10 @@ export default function validateDexieAdd({
       attributeValue.length > constraints.maxLength
     ) {
       throw new DatabaseValidationError(
-        `Length of "${attributeName}" exceed max length of ${constraints.maxLength} with ${attributeValue.length}`,
+        `Length of "${modelAttributeName}" exceed max length of ${constraints.maxLength} with ${attributeValue.length}`,
         {
           object: objectToAdd,
-          badAttribute: attributeName,
+          badAttribute: modelAttributeName,
           failedConstraint: "maxLength",
           tableName,
         },
@@ -179,10 +194,10 @@ export default function validateDexieAdd({
      */
     if (constraints.minLength && attributeValue < constraints.minLength) {
       throw new DatabaseValidationError(
-        `Length of "${attributeName}" = ${attributeValue.length} is lower than a min length of ${constraints.minLength}`,
+        `Length of "${modelAttributeName}" = ${attributeValue.length} is lower than a min length of ${constraints.minLength}`,
         {
           object: objectToAdd,
-          badAttribute: attributeName,
+          badAttribute: modelAttributeName,
           failedConstraint: "minLength",
           tableName,
         },
@@ -197,10 +212,10 @@ export default function validateDexieAdd({
       !new RegExp(constraints.regex).test(attributeValue)
     ) {
       throw new DatabaseValidationError(
-        `"${attributeName}" attribute must match regular expression of ${constraints.regex}`,
+        `"${modelAttributeName}" attribute must match regular expression of ${constraints.regex}`,
         {
           object: objectToAdd,
-          badAttribute: attributeName,
+          badAttribute: modelAttributeName,
           failedConstraint: "regex",
           tableName,
         },
@@ -287,7 +302,7 @@ export default function validateDexieAdd({
     }
   }
 
-  const allPossibleAttributes = [...relationFields, ...attributes];
+  const allPossibleAttributes = [...relationFields, ...modelAttributes];
 
   objectAttributes.forEach((objectAttribute) => {
     if (!allPossibleAttributes.includes(objectAttribute)) {

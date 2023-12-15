@@ -1,10 +1,6 @@
 import Dexie, { IndexableType, PromiseExtended, Transaction } from "dexie";
 import "dexie-observable";
-import {
-  Reducer,
-  Store,
-  UnknownAction,
-} from "redux";
+import { Reducer, Store, UnknownAction } from "redux";
 // todo maybe just fetch??
 import fetch from "isomorphic-fetch";
 import { v1 as uuid } from "uuid";
@@ -16,7 +12,7 @@ import { BaseEntity, DatabaseModel, ValidationSchema } from "./utils/types";
 import modelParser from "./utils/modelParser";
 import DatabaseSyncError from "./errors/DatabaseSyncError";
 import DatabaseOpenError from "./errors/DatabaseOpenError";
-import validateDexieAdd from "./utils/validateDexieAdd";
+import { GetSafelyAddPlugin, GetSafelyUpdatePlugin } from "./utils/dexieAddons";
 
 export type DatabaseState = {
   status: "uninitialized" | "offline" | "online";
@@ -72,25 +68,6 @@ const initState: DatabaseState = {
   hasVersionChanged: false,
 };
 
-function GetSafelyAddPlugin(
-  getValidationSchema: () => ValidationSchema | undefined,
-) {
-  return function SafelyAdd<Item>(db: Dexie) {
-    // @ts-ignore
-    db.Table.prototype.safelyAdd = function (item: Item) {
-      const validationSchema = getValidationSchema();
-      if (validationSchema) {
-        validateDexieAdd({
-          tableName: this.name,
-          objectToAdd: item,
-          validationSchema,
-        });
-      }
-      return this.add(item);
-    };
-  };
-}
-
 export type AutoCreatedEntityFields = {
   uuid: string;
   active: 0 | 1;
@@ -101,13 +78,17 @@ export type AutoCreatedEntityFields = {
 export type DataAccessObject = Omit<Dexie, "table"> & {
   table: <T, TKey = IndexableType>(
     tableName: string,
-  ) => Omit<Dexie.Table<T, TKey>, "add"> & {
+  ) => Omit<Dexie.Table<T, TKey>, "add" | "update"> & {
     safelyAdd: (
       item: (T extends AutoCreatedEntityFields
         ? Omit<T, "uuid" | "active" | "createdAt" | "updatedAt">
         : T) &
         Partial<AutoCreatedEntityFields>,
     ) => PromiseExtended<TKey>;
+    safelyUpdate: (
+      key: TKey,
+      changes: { [Key in keyof T]?: T[Key] | null },
+    ) => PromiseExtended<number>;
   };
 };
 
@@ -149,6 +130,7 @@ export default class Database<
     };
     this.syncInProgress = false;
     Dexie.addons.push(GetSafelyAddPlugin(() => this.validationSchema));
+    Dexie.addons.push(GetSafelyUpdatePlugin(() => this.validationSchema));
     // @ts-ignore
     this.dao = new Dexie(DATABASE_NAME, { autoOpen: false });
     this.registeredViewModels = new Map<string, ViewModels[number]>();

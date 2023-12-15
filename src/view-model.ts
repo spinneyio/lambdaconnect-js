@@ -37,7 +37,8 @@ type ViewModelErrorAction<Name extends string> = {
 type ViewModelAction<Name extends string, Result, Parameters> =
   | ViewModelPendingAction<Name, Parameters>
   | ViewModelSuccessAction<Name, Result>
-  | ViewModelErrorAction<Name>;
+  | ViewModelErrorAction<Name>
+  | { type: "RESET_STATE" };
 
 class ViewModel<
   Name extends string,
@@ -169,6 +170,8 @@ class ViewModel<
   > {
     return (state = this.initialState, action) => {
       switch (action.type) {
+        case "RESET_STATE":
+          return this.initialState;
         case this.actionTypes.fetchPending:
           // not elegant but makes us independent of direct subscribes from the store (allows user to create redux structure as he likes)
           this._parameters = action.payload || state.parameters;
