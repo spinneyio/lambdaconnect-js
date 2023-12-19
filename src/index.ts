@@ -5,6 +5,7 @@ import connectViewModel from "./connect-view-model";
 import DatabaseSyncError from "./errors/DatabaseSyncError";
 import SyncConflictError from "./errors/SyncConflictError";
 import DatabaseValidationError from "./errors/DatabaseValidationError";
+import getViewModelReducers from "./utils/getReducers";
 
 export type { DataAccessObject, Binding, ViewModelState };
 
@@ -16,4 +17,5 @@ export {
   DatabaseSyncError,
   SyncConflictError,
   DatabaseValidationError,
+  getViewModelReducers,
 };

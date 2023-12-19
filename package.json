@@ -1,7 +1,7 @@
 {
   "name": "lambdaconnect-js",
   "author": "Piotr Ciarka",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "main": "./dist/src/index.js",
   "module": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
