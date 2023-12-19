@@ -1,7 +1,7 @@
 import Dexie, { IndexableType, PromiseExtended, Transaction } from "dexie";
 import "dexie-observable";
 import { Reducer, Store, UnknownAction } from "redux";
-// todo maybe just fetch??
+// todo maybe just fetch?
 import fetch from "isomorphic-fetch";
 import { v1 as uuid } from "uuid";
 import SyncConflictError from "./errors/SyncConflictError";
@@ -168,7 +168,7 @@ export default class Database<
     });
   }
 
-  subscribeViewModelStateSelectorsToStoreChanges(store: Store): void {
+  subscribeToStoreChanges(store: Store): void {
     this.store = store;
 
     const defaultEqualityFunction = (left: any, right: any): boolean =>
@@ -415,63 +415,12 @@ export default class Database<
         }
 
         return [entityName, entities] as const;
-
-        // // prepare entities to be modeled within a valid schema
-        // const schema = this.model.entities[entityName]!;
-        // const attributes = Object.keys(schema.attributes)
-        //   .filter((key) => key !== "isSuitableForPush")
-        //   .concat("uuid", "active", "createdAt", "updatedAt", "syncRevision");
-        //
-        // entitiesToPush[entityName] = entities.map((entity) => {
-        //   const resultEntity = {};
-        //
-        //   // pick only attributes that complies to the schema
-        //   for (const attribute of attributes) {
-        //     if (typeof entity[attribute] !== "undefined") {
-        //       resultEntity[attribute] = entity[attribute];
-        //     }
-        //   }
-        //
-        //   return resultEntity;
-        // });
       }),
     );
 
     const entitiesToPush = pushableEntities.filter(
       (entity): entity is [string, any[]] => entity !== undefined,
     );
-
-    // await Promise.mapSeries(
-    //   Object.keys(this.model.entities),
-    //   async (entityName) => {
-    //     const entities = await this.dao
-    //       .table(entityName)
-    //       .where("isSuitableForPush")
-    //       .equals(1)
-    //       .toArray();
-    //     if (entities.length === 0) {
-    //       return;
-    //     }
-    //
-    //     // prepare entities to be modeled within a valid schema
-    //     const schema = this.model.entities[entityName];
-    //     const attributes = Object.keys(schema.attributes)
-    //       .filter((key) => key !== "isSuitableForPush")
-    //       .concat("uuid", "active", "createdAt", "updatedAt", "syncRevision");
-    //     entitiesToPush[entityName] = entities.map((entity) => {
-    //       const resultEntity = {};
-    //
-    //       // pick only attributes that complies to the schema
-    //       for (const attribute of attributes) {
-    //         if (typeof entity[attribute] !== "undefined") {
-    //           resultEntity[attribute] = entity[attribute];
-    //         }
-    //       }
-    //
-    //       return resultEntity;
-    //     });
-    //   },
-    // );
 
     const pushBody = entitiesToPush.reduce(
       (acc, [entityName, entities]) => {
@@ -594,16 +543,6 @@ export default class Database<
           ? lastSyncRevision + 1
           : 0;
       });
-
-      // await Promise.mapSeries(entityNames, async (entityName) => {
-      //   const lastSyncRevision = (
-      //     (await this.dao.table(entityName).orderBy("syncRevision").last()) ||
-      //     {}
-      //   ).syncRevision;
-      //   entityLastRevisions[entityName] = lastSyncRevision
-      //     ? lastSyncRevision + 1
-      //     : 0;
-      // });
     }
 
     const pullResponse = await this.makeServerRequest(
@@ -718,14 +657,6 @@ export default class Database<
 
   static getReducer() // viewModels: A,
   : Reducer<DatabaseState> {
-    // ): (state: TDatabaseState<A>, action: UnknownAction) => TDatabaseState<A> {
-    // const viewModels2 = Object.values(viewModels);
-    //
-    // this.viewModels = viewModels2;
-    // this.viewModels.forEach((viewModel) => {
-    //   viewModel.initialize(this);
-    // });
-
     const databaseReducer = (
       state: DatabaseState = initState,
       action: UnknownAction,
@@ -766,27 +697,6 @@ export default class Database<
     };
 
     return databaseReducer;
-
-    // const reducers = this.viewModels.reduce(
-    //   (acc, viewModel) => {
-    //     acc[viewModel.name] = viewModel.getReducer();
-    //     return acc;
-    //   },
-    //   {
-    //     // database: databaseReducer,
-    //   } as Record<string, Reducer<any, any>>,
-    // );
-
-    // reducers.database = databaseReducer;
-    //
-    // // returns all ViewModel reducers, database reducers
-    // // and a special case for clearing all lambdaconnect state
-    // return (state: any, action: UnknownAction) => {
-    //   if (action.type === RESET_STATE) {
-    //     return combineReducers(reducers)(undefined, action);
-    //   }
-    //   return combineReducers(reducers)(state, action);
-    // };
   }
 
   registerViewModel<Binding, Parameters, State>(
