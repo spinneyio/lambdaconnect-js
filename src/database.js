@@ -187,13 +187,12 @@ export default class Database {
       throw new Error('Redux store is not set');
     }
     try {
-      if (options && options.truncate) {
+      if (options?.truncate) {
         console.log('Deleting database!');
         await this.dao.delete();
       }
 
       // download current data model
-      // todo: it is worth to implement calculating schema hash on the server-side
       const response = await this.makeServerRequest(this.options.dataModelPath);
       if (response.status !== 200 || !response.headers.get('Content-Type').includes('application/json')) {
         throw new Error('Could not load database model');
@@ -201,31 +200,11 @@ export default class Database {
 
       const modelResponse: { model: string } = await (response).json();
 
-      // check if data model is up to date
-      const currentSchemaHash: number = Number(window.localStorage.getItem(LOCALSTORAGE_MODEL_HASH_KEY));
-      const receivedSchemaHash: number = hashCode(modelResponse.model);
-      if (currentSchemaHash !== receivedSchemaHash && currentSchemaHash) {
-        // if not - wipe out the whole database if exist
-        // todo: reconsider migrations (either with server-side counting or local storage version counter)
-        console.log('Truncating the whole database because of model version change');
-        this.store.dispatch({type: DATABASE_VERSION_CHANGED})
-        if (!this.dao.isOpen()) {
-          await this.dao.open();
-        }
-        await this.dao.delete();
-        await this.dao.close();
-      }
-
-      if (this.dao.isOpen()) {
-        await this.dao.close();
-      }
-
-
       const { validationSchema, model } = modelParser(modelResponse.model);
       this.model = model;
       this.validationSchema = validationSchema;
 
-      const indexes = (options && options.indexes) || {};
+      const indexes = options?.indexes || {};
       const schema = Object.keys(this.model.entities)
         .reduce((acc, entityName) => {
           const entity = this.model.entities[entityName];
@@ -249,6 +228,25 @@ export default class Database {
             .join(',');
           return acc;
         }, {});
+
+      // hash should be calculated based on received model AND user provided indexes
+      const currentSchemaHash: number = Number(window.localStorage.getItem(LOCALSTORAGE_MODEL_HASH_KEY));
+      const receivedSchemaHash: number = hashCode(JSON.stringify(schema));
+      if (currentSchemaHash !== receivedSchemaHash && currentSchemaHash) {
+        // if not - wipe out the whole database if exist
+        // todo: reconsider migrations (either with server-side counting or local storage version counter)
+        console.log('Truncating the whole database because of model version change');
+        this.store.dispatch({type: DATABASE_VERSION_CHANGED})
+        if (!this.dao.isOpen()) {
+          await this.dao.open();
+        }
+        await this.dao.delete();
+        await this.dao.close();
+      }
+
+      if (this.dao.isOpen()) {
+        await this.dao.close();
+      }
 
       this.dao.version(this.model.version).stores(schema);
 
