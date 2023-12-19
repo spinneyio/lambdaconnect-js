@@ -200,7 +200,7 @@ export default class Database<
       throw new Error("Redux store is not set");
     }
     try {
-      if (options && options.truncate) {
+      if (options?.truncate) {
         console.log("Deleting database!");
         await this.dao.delete();
       }
@@ -217,34 +217,11 @@ export default class Database<
 
       const modelResponse: { model: string } = await response.json();
 
-      // check if data model is up to date
-      const currentSchemaHash: number = Number(
-        window.localStorage.getItem(LOCALSTORAGE_MODEL_HASH_KEY),
-      );
-      const receivedSchemaHash: number = hashCode(modelResponse.model);
-      if (currentSchemaHash !== receivedSchemaHash && currentSchemaHash) {
-        // if not - wipe out the whole database if exist
-        // todo: reconsider migrations (either with server-side counting or local storage version counter)
-        console.log(
-          "Truncating the whole database because of model version change",
-        );
-        this.store.dispatch({ type: DATABASE_VERSION_CHANGED });
-        if (!this.dao.isOpen()) {
-          await this.dao.open();
-        }
-        await this.dao.delete();
-        this.dao.close();
-      }
-
-      if (this.dao.isOpen()) {
-        this.dao.close();
-      }
-
       const { validationSchema, model } = modelParser(modelResponse.model);
       this.model = model;
       this.validationSchema = validationSchema;
 
-      const indexes = (options && options.indexes) || {};
+      const indexes = options?.indexes || {};
       const schema = Object.keys(this.model.entities).reduce(
         (acc, entityName) => {
           const entity = model.entities[entityName];
@@ -284,6 +261,29 @@ export default class Database<
         },
         {} as Record<string, string>,
       );
+
+      // check if data model is up to date
+      const currentSchemaHash: number = Number(
+        window.localStorage.getItem(LOCALSTORAGE_MODEL_HASH_KEY),
+      );
+      const receivedSchemaHash: number = hashCode(JSON.stringify(schema));
+      if (currentSchemaHash !== receivedSchemaHash && currentSchemaHash) {
+        // if not - wipe out the whole database if exist
+        // todo: reconsider migrations (either with server-side counting or local storage version counter)
+        console.log(
+          "Truncating the whole database because of model version change",
+        );
+        this.store.dispatch({ type: DATABASE_VERSION_CHANGED });
+        if (!this.dao.isOpen()) {
+          await this.dao.open();
+        }
+        await this.dao.delete();
+        this.dao.close();
+      }
+
+      if (this.dao.isOpen()) {
+        this.dao.close();
+      }
 
       this.dao.version(this.model.version).stores(schema);
 
@@ -389,8 +389,6 @@ export default class Database<
   }
 
   async _syncPush(): Promise<void> {
-    // const entitiesToPush = {};
-
     if (!this.model) {
       throw new Error("Model is not parsed yet");
     }
@@ -459,6 +457,7 @@ export default class Database<
               ? errorContent.errors?.english?.push
               : `Server responded with ${pushResponse.status}`,
             type: "push",
+            code: errorContent?.["error-code"] || -1,
           },
         );
       }
@@ -474,6 +473,7 @@ export default class Database<
               ? (Object.values(data.errors.english)?.[0] as string | undefined)
               : `Server responded with error code ${data["error-code"]}`,
             type: "push",
+            code: data["error-code"] || -1,
           },
         );
       }
@@ -551,20 +551,18 @@ export default class Database<
       {},
       entityLastRevisions,
     );
-    if (pullResponse.status !== 200) {
+    let body;
+    try {
+      body = await pullResponse.json();
+    } catch {
+      body = null;
+    }
+    if (pullResponse.status !== 200 || !body || !body.success) {
       throw new DatabaseSyncError(
         `Error while pushing data to server: ${pullResponse.status}`,
         {
           type: "pull",
-        },
-      );
-    }
-    const body = await pullResponse.json();
-    if (!body.success) {
-      throw new DatabaseSyncError(
-        `Server responded with error code: ${body["error-code"]}`,
-        {
-          type: "pull",
+          code: body?.["error-code"] || -1,
         },
       );
     }
