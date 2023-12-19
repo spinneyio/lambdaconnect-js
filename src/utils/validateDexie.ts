@@ -55,173 +55,174 @@ export default function validateDexie({
   );
   const objectAttributes = Object.keys(objectToAdd);
 
-  modelAttributes.forEach((modelAttributeName) => {
-    /**
-     * Skip auto added attributes
-     */
-    if (autoAddedAttributes.includes(modelAttributeName)) {
-      return;
-    }
+  (checkRequired ? modelAttributes : objectAttributes).forEach(
+    (attributeName) => {
+      /**
+       * Skip auto added attributes
+       */
+      if (autoAddedAttributes.includes(attributeName)) {
+        return;
+      }
 
-    const { constraints, type } =
-      selectedTableValidationSchema?.attributes[modelAttributeName] ?? {};
-    const attributeValue = objectToAdd[modelAttributeName];
+      const { constraints, type } =
+        selectedTableValidationSchema?.attributes[attributeName] ?? {};
+      const attributeValue = objectToAdd[attributeName];
 
-    /**
-     * Keep TS happy
-     */
-    if (!constraints || !type) {
-      return;
-    }
+      /**
+       * Keep TS happy
+       */
+      if (!constraints || !type) {
+        return;
+      }
 
-    if (
-      !constraints.required &&
-      (!objectAttributes.includes(modelAttributeName) ||
-        isNullish(attributeValue))
-    ) {
-      return;
-    }
+      if (
+        !constraints.required &&
+        (!objectAttributes.includes(attributeName) || isNullish(attributeValue))
+      ) {
+        return;
+      }
 
-    /**
-     * Throw if there is no required attribute
-     */
-    if (
-      checkRequired &&
-      constraints.required &&
-      !objectAttributes.includes(modelAttributeName)
-    ) {
-      throw new DatabaseValidationError(
-        `No required "${modelAttributeName}" attribute in ${tableName} object`,
-        {
-          object: objectToAdd,
-          failedConstraint: "required",
-          badAttribute: modelAttributeName,
-          tableName,
-        },
-      );
-    }
-
-    /**
-     * Throw if type of attribute doesn't match
-     */
-    if (typeof attributeValue !== type) {
-      if (type === "boolean" || type === "date") {
-        if (type === "boolean" && !isNumericBoolean(attributeValue)) {
-          throw new DatabaseValidationError(
-            `Type of "${modelAttributeName}" attribute is ${typeof attributeValue} but needs to be ${type}`,
-            {
-              object: objectToAdd,
-              failedConstraint: "typeError",
-              badAttribute: modelAttributeName,
-              tableName,
-            },
-          );
-        }
-        if (type === "date" && !isISODate(attributeValue)) {
-          throw new DatabaseValidationError(
-            `Type of "${modelAttributeName}" attribute is ${typeof attributeValue} but needs to be ${type}`,
-            {
-              object: objectToAdd,
-              failedConstraint: "typeError",
-              badAttribute: modelAttributeName,
-              tableName,
-            },
-          );
-        }
-      } else {
+      /**
+       * Throw if there is no required attribute
+       */
+      if (
+        checkRequired &&
+        constraints.required &&
+        !objectAttributes.includes(attributeName)
+      ) {
         throw new DatabaseValidationError(
-          `Type of "${modelAttributeName}" attribute is ${typeof attributeValue} but needs to be ${type}`,
+          `No required "${attributeName}" attribute in ${tableName} object`,
           {
             object: objectToAdd,
-            failedConstraint: "typeError",
-            badAttribute: modelAttributeName,
+            failedConstraint: "required",
+            badAttribute: attributeName,
             tableName,
           },
         );
       }
-    }
 
-    /**
-     * Throw if maxValue constraint is not met
-     */
-    if (constraints.maxValue && attributeValue > constraints.maxValue) {
-      throw new DatabaseValidationError(
-        `Value of "${modelAttributeName}" exceeded a max value of ${constraints.maxValue} with ${attributeValue}`,
-        {
-          object: objectToAdd,
-          badAttribute: modelAttributeName,
-          failedConstraint: "maxValue",
-          tableName,
-        },
-      );
-    }
+      /**
+       * Throw if type of attribute doesn't match
+       */
+      if (typeof attributeValue !== type) {
+        if (type === "boolean" || type === "date") {
+          if (type === "boolean" && !isNumericBoolean(attributeValue)) {
+            throw new DatabaseValidationError(
+              `Type of "${attributeName}" attribute is ${typeof attributeValue} but needs to be ${type}`,
+              {
+                object: objectToAdd,
+                failedConstraint: "typeError",
+                badAttribute: attributeName,
+                tableName,
+              },
+            );
+          }
+          if (type === "date" && !isISODate(attributeValue)) {
+            throw new DatabaseValidationError(
+              `Type of "${attributeName}" attribute is ${typeof attributeValue} but needs to be ${type}`,
+              {
+                object: objectToAdd,
+                failedConstraint: "typeError",
+                badAttribute: attributeName,
+                tableName,
+              },
+            );
+          }
+        } else {
+          throw new DatabaseValidationError(
+            `Type of "${attributeName}" attribute is ${typeof attributeValue} but needs to be ${type}`,
+            {
+              object: objectToAdd,
+              failedConstraint: "typeError",
+              badAttribute: attributeName,
+              tableName,
+            },
+          );
+        }
+      }
 
-    /**
-     * Throw if minValue constraint is not met
-     */
-    if (constraints.minValue && attributeValue < constraints.minValue) {
-      throw new DatabaseValidationError(
-        `Value of "${modelAttributeName}" = ${attributeValue} is lower than a min value of ${constraints.minValue}`,
-        {
-          object: objectToAdd,
-          badAttribute: modelAttributeName,
-          failedConstraint: "minValue",
-          tableName,
-        },
-      );
-    }
+      /**
+       * Throw if maxValue constraint is not met
+       */
+      if (constraints.maxValue && attributeValue > constraints.maxValue) {
+        throw new DatabaseValidationError(
+          `Value of "${attributeName}" exceeded a max value of ${constraints.maxValue} with ${attributeValue}`,
+          {
+            object: objectToAdd,
+            badAttribute: attributeName,
+            failedConstraint: "maxValue",
+            tableName,
+          },
+        );
+      }
 
-    /**
-     * Throw if maxLength constraint is not met
-     */
-    if (
-      constraints.maxLength &&
-      attributeValue.length > constraints.maxLength
-    ) {
-      throw new DatabaseValidationError(
-        `Length of "${modelAttributeName}" exceed max length of ${constraints.maxLength} with ${attributeValue.length}`,
-        {
-          object: objectToAdd,
-          badAttribute: modelAttributeName,
-          failedConstraint: "maxLength",
-          tableName,
-        },
-      );
-    }
+      /**
+       * Throw if minValue constraint is not met
+       */
+      if (constraints.minValue && attributeValue < constraints.minValue) {
+        throw new DatabaseValidationError(
+          `Value of "${attributeName}" = ${attributeValue} is lower than a min value of ${constraints.minValue}`,
+          {
+            object: objectToAdd,
+            badAttribute: attributeName,
+            failedConstraint: "minValue",
+            tableName,
+          },
+        );
+      }
 
-    /**
-     * Throw if minValue constraint is not met
-     */
-    if (constraints.minLength && attributeValue < constraints.minLength) {
-      throw new DatabaseValidationError(
-        `Length of "${modelAttributeName}" = ${attributeValue.length} is lower than a min length of ${constraints.minLength}`,
-        {
-          object: objectToAdd,
-          badAttribute: modelAttributeName,
-          failedConstraint: "minLength",
-          tableName,
-        },
-      );
-    }
+      /**
+       * Throw if maxLength constraint is not met
+       */
+      if (
+        constraints.maxLength &&
+        attributeValue.length > constraints.maxLength
+      ) {
+        throw new DatabaseValidationError(
+          `Length of "${attributeName}" exceed max length of ${constraints.maxLength} with ${attributeValue.length}`,
+          {
+            object: objectToAdd,
+            badAttribute: attributeName,
+            failedConstraint: "maxLength",
+            tableName,
+          },
+        );
+      }
 
-    /**
-     * Throw if regex does not match
-     */
-    if (
-      constraints.regex &&
-      !new RegExp(constraints.regex).test(attributeValue)
-    ) {
-      throw new DatabaseValidationError(
-        `"${modelAttributeName}" attribute must match regular expression of ${constraints.regex}`,
-        {
-          object: objectToAdd,
-          badAttribute: modelAttributeName,
-          failedConstraint: "regex",
-          tableName,
-        },
-      );
-    }
-  });
+      /**
+       * Throw if minValue constraint is not met
+       */
+      if (constraints.minLength && attributeValue < constraints.minLength) {
+        throw new DatabaseValidationError(
+          `Length of "${attributeName}" = ${attributeValue.length} is lower than a min length of ${constraints.minLength}`,
+          {
+            object: objectToAdd,
+            badAttribute: attributeName,
+            failedConstraint: "minLength",
+            tableName,
+          },
+        );
+      }
+
+      /**
+       * Throw if regex does not match
+       */
+      if (
+        constraints.regex &&
+        !new RegExp(constraints.regex).test(attributeValue)
+      ) {
+        throw new DatabaseValidationError(
+          `"${attributeName}" attribute must match regular expression of ${constraints.regex}`,
+          {
+            object: objectToAdd,
+            badAttribute: attributeName,
+            failedConstraint: "regex",
+            tableName,
+          },
+        );
+      }
+    },
+  );
 
   /**
    * Validate relationships of added object
