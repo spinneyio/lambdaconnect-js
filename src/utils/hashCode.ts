@@ -1,12 +1,5 @@
-// @flow
-
 // This is a non-secure but fast version of Java's String.hashCode method
-/**
- *
- * @param {string} input
- * @return {number}
- */
-export default (input) => {
+export default (input: string) => {
   let hash = 0;
   if (input.length === 0) {
     return hash;
