@@ -1,9 +1,9 @@
 export type ErrorData = {
-  error?: string,
-  pushPayload?: {[string]: Array<any>},
-  code?: number,
-  type: 'push' | 'pull',
-}
+  error?: string;
+  pushPayload?: Record<string, Array<any>>;
+  code?: number;
+  type: "push" | "pull";
+};
 
 class DatabaseSyncError extends Error {
   errorData: ErrorData;
@@ -11,7 +11,7 @@ class DatabaseSyncError extends Error {
   constructor(message: string, errorData: ErrorData) {
     super(message);
     this.errorData = errorData;
-    this.name = 'DatabaseSyncError';
+    this.name = "DatabaseSyncError";
   }
 }
 

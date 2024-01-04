@@ -1,4 +1,4 @@
-import validateDexieAdd from "../src/utils/validateDexieAdd";
+import validateDexie from "../src/utils/validateDexie";
 import DatabaseValidationError from "../src/errors/DatabaseValidationError";
 
 const validationSchemaFragment = {
@@ -105,7 +105,7 @@ const userCorrect = {
   messagesReceived: ["id1", "id2"],
 }
 
-const runValidateFunctionWithMockedData = (mockedObject, tableName = validationTableName) => validateDexieAdd({
+const runValidateFunctionWithMockedData = (mockedObject, tableName = validationTableName) => validateDexie({
   objectToAdd: mockedObject,
   validationSchema: validationSchemaFragment,
   tableName,

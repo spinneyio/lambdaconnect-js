@@ -1,14 +1,14 @@
-// @flow
+// @ts-nocheck
 
-import parser from 'fast-xml-parser';
-import he from 'he';
-import type {
+import parser from "fast-xml-parser";
+import he from "he";
+import {
   Constraints,
   DatabaseModel,
   RawAttribute,
   RawEntity,
   Type,
-  ValidationSchema
+  ValidationSchema,
 } from "./types";
 
 const options = {
@@ -23,13 +23,20 @@ const options = {
   trimValues: true,
   parseTrueNumberOnly: false,
   arrayMode: false, //"strict"
-  attrValueProcessor: (val, attrName) => he.decode(val, {isAttributeValue: true}),//default is a=>a
+  attrValueProcessor: (val, attrName) =>
+    he.decode(val, { isAttributeValue: true }), //default is a=>a
   tagValueProcessor: (val, tagName) => he.decode(val), //default is a=>a
-  stopNodes: ["element", "elements"]
+  stopNodes: ["element", "elements"],
 };
 
-const numberTypes = ['Double', 'Integer 64', 'Integer 16', 'Integer 32', 'Float'];
-const stringTypes = ['String', 'UUID', 'URI'];
+const numberTypes = [
+  "Double",
+  "Integer 64",
+  "Integer 16",
+  "Integer 32",
+  "Float",
+];
+const stringTypes = ["String", "UUID", "URI"];
 
 /**
  * Get constraints and type of attribute for validation schema
@@ -37,32 +44,35 @@ const stringTypes = ['String', 'UUID', 'URI'];
  * @param { RawAttribute.attr } attributeValues
  * @returns {{ type: Type, constraints: Constraints }}
  */
-function getAttributeConstraints(attributeValues): { type: Type, constraints: Constraints } {
-  let type = 'boolean';
+function getAttributeConstraints(attributeValues): {
+  type: Type;
+  constraints: Constraints;
+} {
+  let type = "boolean";
   if (numberTypes.includes(attributeValues.attributeType)) {
-    type = 'number';
+    type = "number";
   }
   if (stringTypes.includes(attributeValues.attributeType)) {
-    type = 'string';
+    type = "string";
   }
-  if (attributeValues.attributeType === 'Date') {
-    type = 'date';
+  if (attributeValues.attributeType === "Date") {
+    type = "date";
   }
   const constraints: Constraints = {
     required: true,
   };
-  if (attributeValues.optional === 'YES') {
+  if (attributeValues.optional === "YES") {
     constraints.required = false;
   }
-  if (typeof attributeValues.minValueString === 'number') {
-    if (type === 'number') {
+  if (typeof attributeValues.minValueString === "number") {
+    if (type === "number") {
       constraints.minValue = attributeValues.minValueString;
     } else {
       constraints.minLength = attributeValues.minValueString;
     }
   }
-  if (typeof attributeValues.maxValueString === 'number') {
-    if (type === 'number') {
+  if (typeof attributeValues.maxValueString === "number") {
+    if (type === "number") {
       constraints.maxValue = attributeValues.maxValueString;
     } else {
       constraints.maxLength = attributeValues.maxValueString;
@@ -74,7 +84,7 @@ function getAttributeConstraints(attributeValues): { type: Type, constraints: Co
   return {
     type,
     constraints,
-  }
+  };
 }
 
 /**
@@ -87,7 +97,9 @@ function getAttributeConstraints(attributeValues): { type: Type, constraints: Co
  * @param { string } xmlData - Backend data-model XML in string format, typically from api/v1/data-model
  * @returns {{ model: DatabaseModel, validationSchema: ValidationSchema }}
  */
-export default (xmlData: string): { model: DatabaseModel, validationSchema: ValidationSchema } => {
+export default (
+  xmlData: string,
+): { model: DatabaseModel; validationSchema: ValidationSchema } => {
   const dbSchema = {
     version: 1,
     entities: {},
@@ -100,7 +112,7 @@ export default (xmlData: string): { model: DatabaseModel, validationSchema: Vali
     const { name, syncable } = entity.attr;
     const dbEntitySchema = {
       name,
-      syncable: syncable === 'YES',
+      syncable: syncable === "YES",
       attributes: {},
     };
     validationSchema[name] = {
@@ -111,32 +123,40 @@ export default (xmlData: string): { model: DatabaseModel, validationSchema: Vali
       const { name: attributeName, optional, attributeType } = attr;
       const attributeSchema = {
         name: attributeName,
-        optional: optional === 'YES',
+        optional: optional === "YES",
         attributeType,
         indexed: false,
       };
-      const { type, constraints } = getAttributeConstraints(attr)
+      const { type, constraints } = getAttributeConstraints(attr);
 
       dbEntitySchema.attributes[attributeName] = attributeSchema;
-      validationSchema[name].attributes[attributeName] = {type, constraints};
+      validationSchema[name].attributes[attributeName] = { type, constraints };
     }
 
     if (entity.relationship) {
-      for (const { attr } of Array.isArray(entity.relationship) ? entity.relationship : [entity.relationship]) {
-        const { name: attributeName, optional, destinationEntity, toMany } = attr;
+      for (const { attr } of Array.isArray(entity.relationship)
+        ? entity.relationship
+        : [entity.relationship]) {
+        const {
+          name: attributeName,
+          optional,
+          destinationEntity,
+          toMany,
+        } = attr;
         const attributeSchema = {
           name: attributeName,
-          optional: optional === 'YES',
-          attributeType: 'relationship',
-          toMany: toMany === 'YES',
+          optional: optional === "YES",
+          attributeType: "relationship",
+          toMany: toMany === "YES",
         };
         const relationValidationSchema = {
           destinationEntity,
-          toMany: toMany === 'YES',
-        }
+          toMany: toMany === "YES",
+        };
 
         dbEntitySchema.attributes[attributeName] = attributeSchema;
-        validationSchema[name].relationships[attributeName] = relationValidationSchema;
+        validationSchema[name].relationships[attributeName] =
+          relationValidationSchema;
       }
     }
 
@@ -147,4 +167,4 @@ export default (xmlData: string): { model: DatabaseModel, validationSchema: Vali
     model: dbSchema,
     validationSchema,
   };
-}
+};
