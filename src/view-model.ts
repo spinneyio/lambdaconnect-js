@@ -141,14 +141,21 @@ class ViewModel<
     );
   }
 
+  private pendingReloads = 0;
+
   getReloadAction(parameters?: Properties) {
     return (dispatch: Dispatch<UnknownAction>) => {
+      this.pendingReloads += 1;
+      const currentReloadId = this.pendingReloads;
       dispatch({
         type: this.actionTypes.fetchPending,
         payload: parameters,
       });
       this.reload(this._parameters)
         .then((result) => {
+          if (currentReloadId !== this.pendingReloads) {
+            return;
+          }
           dispatch({
             type: this.actionTypes.fetchSuccess,
             payload: result,
@@ -156,10 +163,18 @@ class ViewModel<
         })
         .catch((error) => {
           console.error(`Error reloading ViewModel '${this.name}'`, error);
+          if (currentReloadId !== this.pendingReloads) {
+            return;
+          }
           dispatch({
             type: this.actionTypes.fetchError,
             error,
           });
+        })
+        .finally(() => {
+          if (currentReloadId === this.pendingReloads) {
+            this.pendingReloads = 0;
+          }
         });
     };
   }
