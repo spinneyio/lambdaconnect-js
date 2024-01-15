@@ -1,10 +1,10 @@
-// @ts-nocheck
-
 import parser from "fast-xml-parser";
 import he from "he";
 import {
   Constraints,
   DatabaseModel,
+  DatabaseModelEntity,
+  DatabaseModelEntityAttribute,
   RawAttribute,
   RawEntity,
   Type,
@@ -23,8 +23,10 @@ const options = {
   trimValues: true,
   parseTrueNumberOnly: false,
   arrayMode: false, //"strict"
+  // @ts-ignore
   attrValueProcessor: (val, attrName) =>
     he.decode(val, { isAttributeValue: true }), //default is a=>a
+  // @ts-ignore
   tagValueProcessor: (val, tagName) => he.decode(val), //default is a=>a
   stopNodes: ["element", "elements"],
 };
@@ -44,11 +46,11 @@ const stringTypes = ["String", "UUID", "URI"];
  * @param { RawAttribute.attr } attributeValues
  * @returns {{ type: Type, constraints: Constraints }}
  */
-function getAttributeConstraints(attributeValues): {
+function getAttributeConstraints(attributeValues: RawAttribute["attr"]): {
   type: Type;
   constraints: Constraints;
 } {
-  let type = "boolean";
+  let type: Type = "boolean";
   if (numberTypes.includes(attributeValues.attributeType)) {
     type = "number";
   }
@@ -88,32 +90,28 @@ function getAttributeConstraints(attributeValues): {
 }
 
 /**
- * @name modelParser
  * Parse string XML data model to provide schema for Dexie database and validation schema for safelyAdd plugin
  *
  * @see safelyAdd
  * @see {@link http://testing.telahealth.com/api/v1/data-model}
- *
- * @param { string } xmlData - Backend data-model XML in string format, typically from api/v1/data-model
- * @returns {{ model: DatabaseModel, validationSchema: ValidationSchema }}
  */
 export default (
   xmlData: string,
 ): { model: DatabaseModel; validationSchema: ValidationSchema } => {
   const dbSchema = {
     version: 1,
-    entities: {},
+    entities: {} as Record<string, DatabaseModelEntity>,
   };
-  const validationSchema = {};
+  const validationSchema: ValidationSchema = {};
 
   const jsonObj = parser.parse(xmlData, options);
-  const entities: RawEntity[] = jsonObj.model.entity;
+  const entities: RawEntity[] = jsonObj.model?.entity ?? [];
   for (const entity of entities) {
     const { name, syncable } = entity.attr;
     const dbEntitySchema = {
       name,
       syncable: syncable === "YES",
-      attributes: {},
+      attributes: {} as Record<string, DatabaseModelEntityAttribute>,
     };
     validationSchema[name] = {
       attributes: {},
@@ -125,11 +123,12 @@ export default (
         name: attributeName,
         optional: optional === "YES",
         attributeType,
-        indexed: false,
+        indexed: false as const,
       };
       const { type, constraints } = getAttributeConstraints(attr);
 
       dbEntitySchema.attributes[attributeName] = attributeSchema;
+      // @ts-expect-error
       validationSchema[name].attributes[attributeName] = { type, constraints };
     }
 
@@ -155,6 +154,7 @@ export default (
         };
 
         dbEntitySchema.attributes[attributeName] = attributeSchema;
+        // @ts-expect-error
         validationSchema[name].relationships[attributeName] =
           relationValidationSchema;
       }

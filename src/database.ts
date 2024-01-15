@@ -263,10 +263,10 @@ export default class Database<
       );
 
       // check if data model is up to date
-      const currentSchemaHash: number = Number(
+      const currentSchemaHash = Number(
         window.localStorage.getItem(LOCALSTORAGE_MODEL_HASH_KEY),
       );
-      const receivedSchemaHash: number = hashCode(JSON.stringify(schema));
+      const receivedSchemaHash = hashCode(JSON.stringify(schema));
       if (currentSchemaHash !== receivedSchemaHash && currentSchemaHash) {
         // if not - wipe out the whole database if exist
         // todo: reconsider migrations (either with server-side counting or local storage version counter)

@@ -16,7 +16,6 @@ export type DatabaseModelEntityAttribute = {
   name: string;
   optional: boolean;
   attributeType: string;
-  syncable: boolean;
   indexed?: false;
   toMany?: boolean;
 };
