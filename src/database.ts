@@ -703,6 +703,11 @@ export default class Database<
   ) {
     this.registeredViewModels.set(viewModel.name, viewModel);
     if (this.isInitialized && this.store) {
+      if (viewModel.stateSelector) {
+        viewModel.lastReloadState = viewModel.stateSelector(
+          this.store.getState(),
+        );
+      }
       // todo: maybe a query-revision comparison to optimize query calls?
       viewModel.getReloadAction(initialReloadParameters)(this.store.dispatch);
     }
