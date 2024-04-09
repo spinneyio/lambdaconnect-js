@@ -293,8 +293,7 @@ export default class Database<
           return;
         }
 
-        // todo: reload optimizations should be based on changes
-        this.reloadAllViewModels();
+        this.reloadChangedViewModels(changes.map((change) => change.table));
       });
 
       // Dexie hook typings are insane
@@ -625,6 +624,9 @@ export default class Database<
     this.isChangesFrozen = isFrozen;
   }
 
+  /**
+   * @deprecated
+   */
   reloadAllViewModels(): void {
     if (!this.dao.isOpen() || !this.store) {
       console.warn("Database still not opened, aborting reload");
@@ -635,6 +637,29 @@ export default class Database<
     this.registeredViewModels.forEach((viewModel) => {
       viewModel.getReloadAction()(dispatch);
     });
+  }
+
+  reloadChangedViewModels(changedObjectStores: Array<string>): void {
+    if (!this.dao.isOpen() || !this.store) {
+      console.warn("Database still not opened, aborting reload");
+      return;
+    }
+    const { dispatch } = this.store;
+    let counter = 0;
+    this.registeredViewModels.forEach((viewModel) => {
+      const doesChangeAffectViewModel = changedObjectStores.some(
+        (objectStore) => {
+          return viewModel.readTables.has(objectStore);
+        },
+      );
+      if (doesChangeAffectViewModel) {
+        counter += 1;
+        viewModel.getReloadAction()(dispatch);
+      }
+    });
+    console.log(
+      `Registered VMs: ${this.registeredViewModels.size}; VM reload count: ${counter}`,
+    );
   }
 
   /**

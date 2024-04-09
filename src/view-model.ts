@@ -48,7 +48,13 @@ class ViewModel<
 > {
   readonly binding: Binding<BindingResult, Properties, SelectedState>;
 
+  readTables: Set<string>;
+
   private database: Database<Array<this>> | null;
+
+  private readonly countingDao: {
+    table: DataAccessObject["table"];
+  };
 
   private mountCount: number;
 
@@ -94,6 +100,14 @@ class ViewModel<
     this.stateSelectorEqualityFunction = stateSelectorEqualityFunction;
     this.lastReloadState = undefined;
 
+    this.readTables = new Set();
+    this.countingDao = {
+      table: (tableName: string) => {
+        this.readTables.add(tableName);
+        return this.database!.dao.table(tableName);
+      },
+    };
+
     const actionInterfix = name.toUpperCase() as Uppercase<string>;
 
     this.actionTypes = {
@@ -137,7 +151,12 @@ class ViewModel<
     this.lastReloadState = selectedState;
 
     return Promise.resolve(
-      this.binding(this.database.dao, parameters, selectedState),
+      this.binding(
+        // that's a little ugly :/
+        this.countingDao as DataAccessObject,
+        parameters,
+        selectedState,
+      ),
     );
   }
 
