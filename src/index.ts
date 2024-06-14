@@ -6,6 +6,7 @@ import DatabaseSyncError from "./errors/DatabaseSyncError";
 import SyncConflictError from "./errors/SyncConflictError";
 import DatabaseValidationError from "./errors/DatabaseValidationError";
 import getViewModelReducers from "./utils/getReducers";
+import authorizedFetch, { setFetchAuthToken } from "./authorized-fetch";
 
 export type { DataAccessObject, Binding, ViewModelState };
 
@@ -18,4 +19,6 @@ export {
   SyncConflictError,
   DatabaseValidationError,
   getViewModelReducers,
+  authorizedFetch,
+  setFetchAuthToken,
 };

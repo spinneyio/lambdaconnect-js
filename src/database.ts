@@ -1,8 +1,6 @@
 import Dexie, { IndexableType, PromiseExtended, Transaction } from "dexie";
 import "dexie-observable";
 import { Reducer, Store, UnknownAction } from "redux";
-// todo maybe just fetch?
-import fetch from "isomorphic-fetch";
 import { v1 as uuid } from "uuid";
 import SyncConflictError from "./errors/SyncConflictError";
 
@@ -13,6 +11,7 @@ import modelParser from "./utils/modelParser";
 import DatabaseSyncError from "./errors/DatabaseSyncError";
 import DatabaseOpenError from "./errors/DatabaseOpenError";
 import { GetSafelyAddPlugin, GetSafelyUpdatePlugin } from "./utils/dexieAddons";
+import authorizedFetch from "./authorized-fetch";
 
 export type DatabaseState = {
   status: "uninitialized" | "offline" | "online";
@@ -150,23 +149,23 @@ export default class Database<
     return this.validationSchema;
   }
 
-  makeServerRequest(
-    path: string,
-    method: string = "GET",
-    headers?: any,
-    body?: any,
-    apiVersion: string = "v1",
-  ): Promise<any> {
-    return fetch(`${this.options.apiUrl}/${apiVersion}/${path}`, {
-      method,
-      headers: {
-        "Content-Type": "application/json",
-        ...this.requestHeaders,
-        ...headers,
-      },
-      body: typeof body === "object" ? JSON.stringify(body) : body,
-    });
-  }
+  // makeServerRequest(
+  //   path: string,
+  //   method: string = "GET",
+  //   headers?: any,
+  //   body?: any,
+  //   apiVersion: string = "v1",
+  // ): Promise<any> {
+  //   return fetch(`${this.options.apiUrl}/${apiVersion}/${path}`, {
+  //     method,
+  //     headers: {
+  //       "Content-Type": "application/json",
+  //       ...this.requestHeaders,
+  //       ...headers,
+  //     },
+  //     body: typeof body === "object" ? JSON.stringify(body) : body,
+  //   });
+  // }
 
   subscribeToStoreChanges(store: Store): void {
     this.store = store;
@@ -207,10 +206,10 @@ export default class Database<
 
       // download current data model
       // todo: it is worth to implement calculating schema hash on the server-side
-      const response = await this.makeServerRequest(this.options.dataModelPath);
+      const response = await authorizedFetch(this.options.dataModelPath);
       if (
         response.status !== 200 ||
-        !response.headers.get("Content-Type").includes("application/json")
+        !response.headers.get("Content-Type")?.includes("application/json")
       ) {
         throw new Error("Could not load database model");
       }
@@ -428,12 +427,22 @@ export default class Database<
     );
 
     if (entitiesToPush.length > 0) {
-      const pushResponse = await this.makeServerRequest(
-        this.options.pushPath,
-        "POST",
-        null,
-        pushBody,
+      const pushResponse = await authorizedFetch(
+        this.options.apiUrl + this.options.pushPath,
+        {
+          method: "POST",
+          body: JSON.stringify(pushBody),
+          headers: {
+            "Content-Type": "application/json",
+          },
+        },
       );
+      // const pushResponse = await this.makeServerRequest(
+      //   this.options.pushPath,
+      //   "POST",
+      //   null,
+      //   pushBody,
+      // );
       if (pushResponse.status !== 200) {
         let errorContent;
         try {
@@ -544,12 +553,22 @@ export default class Database<
       });
     }
 
-    const pullResponse = await this.makeServerRequest(
-      this.options.pullPath,
-      "POST",
-      {},
-      entityLastRevisions,
+    const pullResponse = await authorizedFetch(
+      this.options.apiUrl + this.options.pullPath,
+      {
+        method: "POST",
+        body: JSON.stringify(entityLastRevisions),
+        headers: {
+          "Content-Type": "application/json",
+        },
+      },
     );
+    // const pullResponse = await this.makeServerRequest(
+    //   this.options.pullPath,
+    //   "POST",
+    //   {},
+    //   entityLastRevisions,
+    // );
     let body;
     try {
       body = await pullResponse.json();
