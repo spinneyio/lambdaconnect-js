@@ -6,12 +6,14 @@ import DatabaseSyncError from "./errors/DatabaseSyncError";
 import SyncConflictError from "./errors/SyncConflictError";
 import DatabaseValidationError from "./errors/DatabaseValidationError";
 import getViewModelReducers from "./utils/getReducers";
+import SyncManager from "./sync-manager";
 
 export type { DataAccessObject, Binding, ViewModelState };
 
 export {
   Database,
   ViewModel,
+  SyncManager,
   useViewModel,
   connectViewModel,
   DatabaseSyncError,

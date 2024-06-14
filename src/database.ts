@@ -1,18 +1,15 @@
 import Dexie, { IndexableType, PromiseExtended, Transaction } from "dexie";
 import "dexie-observable";
 import { Reducer, Store, UnknownAction } from "redux";
-// todo maybe just fetch?
-import fetch from "isomorphic-fetch";
 import { v1 as uuid } from "uuid";
-import SyncConflictError from "./errors/SyncConflictError";
 
 import ViewModel from "./view-model";
 import hashCode from "./utils/hashCode";
 import { BaseEntity, DatabaseModel, ValidationSchema } from "./utils/types";
 import modelParser from "./utils/modelParser";
-import DatabaseSyncError from "./errors/DatabaseSyncError";
 import DatabaseOpenError from "./errors/DatabaseOpenError";
 import { GetSafelyAddPlugin, GetSafelyUpdatePlugin } from "./utils/dexieAddons";
+import authorizedFetch from "./authorized-fetch";
 
 export type DatabaseState = {
   status: "uninitialized" | "offline" | "online";
@@ -24,12 +21,7 @@ export type DatabaseState = {
 
 export type DatabaseOptions = {
   apiUrl: string;
-  pushPath: string;
-  pullPath: string;
   dataModelPath: string;
-  bulkPutLimit: number;
-  disablePush: boolean;
-  disablePull: boolean;
   rejectionWhitelist: Array<string>;
 };
 
@@ -39,7 +31,6 @@ export type DatabaseInitOptions = {
   pullPath?: string;
   dataModelPath?: string;
   bulkPutLimit?: number;
-  disablePush?: boolean;
   disablePull?: boolean;
   rejectionWhitelist?: Array<string>;
 };
@@ -109,26 +100,16 @@ export default class Database<
 
   options: DatabaseOptions;
 
-  requestHeaders: any;
-
-  syncInProgress: boolean;
-
   isInitialized: boolean;
 
   isChangesFrozen: boolean = false;
 
   constructor(viewModels: ViewModels, options: DatabaseInitOptions) {
     this.options = {
-      pushPath: "lambdaconnect/push",
-      pullPath: "lambdaconnect/pull",
       dataModelPath: "data-model",
-      bulkPutLimit: 1000,
-      disablePull: false,
-      disablePush: false,
       rejectionWhitelist: [],
       ...options,
     };
-    this.syncInProgress = false;
     Dexie.addons.push(GetSafelyAddPlugin(() => this.validationSchema));
     Dexie.addons.push(GetSafelyUpdatePlugin(() => this.validationSchema));
     // @ts-ignore
@@ -139,32 +120,6 @@ export default class Database<
 
     this.viewModels.forEach((viewModel) => {
       viewModel.initialize(this);
-    });
-  }
-
-  setRequestHeaders(headers: any): void {
-    this.requestHeaders = headers;
-  }
-
-  getValidationSchema() {
-    return this.validationSchema;
-  }
-
-  makeServerRequest(
-    path: string,
-    method: string = "GET",
-    headers?: any,
-    body?: any,
-    apiVersion: string = "v1",
-  ): Promise<any> {
-    return fetch(`${this.options.apiUrl}/${apiVersion}/${path}`, {
-      method,
-      headers: {
-        "Content-Type": "application/json",
-        ...this.requestHeaders,
-        ...headers,
-      },
-      body: typeof body === "object" ? JSON.stringify(body) : body,
     });
   }
 
@@ -205,12 +160,11 @@ export default class Database<
         await this.dao.delete();
       }
 
-      // download current data model
-      // todo: it is worth to implement calculating schema hash on the server-side
-      const response = await this.makeServerRequest(this.options.dataModelPath);
+      const response = await authorizedFetch(this.options.dataModelPath);
+      // const response = await this.makeServerRequest(this.options.dataModelPath);
       if (
         response.status !== 200 ||
-        !response.headers.get("Content-Type").includes("application/json")
+        !response.headers.get("Content-Type")?.includes("application/json")
       ) {
         throw new Error("Could not load database model");
       }
@@ -369,248 +323,6 @@ export default class Database<
     }
   }
 
-  async _monitoredBulkPut(
-    // entitiesToPush: { [string]: [{ isSuitableForPush: 0 | 1 }] },
-    entitiesToPush: Record<string, Array<BaseEntity>>,
-  ) {
-    await this.dao.transaction("rw!", Object.keys(entitiesToPush), async () => {
-      // @ts-ignore needed to skip table hooks on sync transactions
-      Dexie.currentTransaction.__syncTransaction = true;
-
-      for (const entityName of Object.keys(entitiesToPush)) {
-        const entities = entitiesToPush[entityName]!;
-        for (const entity of entities) {
-          entity.isSuitableForPush = 0;
-        }
-        await this.dao.table(entityName).bulkPut(entities);
-      }
-    });
-  }
-
-  async _syncPush(): Promise<void> {
-    if (!this.model) {
-      throw new Error("Model is not parsed yet");
-    }
-
-    const pushableEntities = await Promise.all(
-      Object.keys(this.model.entities).map(async (entityName) => {
-        if (!this.model) {
-          return;
-        }
-
-        const entities = await this.dao
-          .table(entityName)
-          .where("isSuitableForPush")
-          .equals(1)
-          .toArray();
-        for (const entity of entities) {
-          // @ts-ignore
-          delete entity.isSuitableForPush;
-        }
-        if (entities.length === 0) {
-          return;
-        }
-
-        return [entityName, entities] as const;
-      }),
-    );
-
-    const entitiesToPush = pushableEntities.filter(
-      (entity): entity is [string, any[]] => entity !== undefined,
-    );
-
-    const pushBody = entitiesToPush.reduce(
-      (acc, [entityName, entities]) => {
-        acc[entityName] = entities;
-        return acc;
-      },
-      {} as Record<string, Array<any>>,
-    );
-
-    if (entitiesToPush.length > 0) {
-      const pushResponse = await this.makeServerRequest(
-        this.options.pushPath,
-        "POST",
-        null,
-        pushBody,
-      );
-      if (pushResponse.status !== 200) {
-        let errorContent;
-        try {
-          errorContent = await pushResponse.json();
-        } catch {
-          errorContent = null;
-        }
-        if (errorContent?.["error-code"] === 42) {
-          this.options = {
-            ...this.options,
-            disablePull: true,
-          };
-          return;
-        }
-        throw new DatabaseSyncError(
-          `Error while pushing data to server: ${pushResponse.status}`,
-          {
-            pushPayload: pushBody,
-            error: errorContent
-              ? errorContent.errors?.english?.push
-              : `Server responded with ${pushResponse.status}`,
-            type: "push",
-            code: errorContent?.["error-code"] || -1,
-          },
-        );
-      }
-
-      const data = await pushResponse.json();
-
-      if (!data.success) {
-        throw new DatabaseSyncError(
-          "Server responded with an error while pushing data",
-          {
-            pushPayload: pushBody,
-            error: data.errors?.english
-              ? (Object.values(data.errors.english)?.[0] as string | undefined)
-              : `Server responded with error code ${data["error-code"]}`,
-            type: "push",
-            code: data["error-code"] || -1,
-          },
-        );
-      }
-
-      const checkedRejectedObjects = Object.keys(
-        data["rejected-objects"],
-      ).filter((key) => !this.options.rejectionWhitelist.includes(key));
-      const checkedRejectedFields = Object.keys(data["rejected-fields"]).filter(
-        (key) => {
-          // flatten the rejected-fields of current object and filter out whitelisted field names
-          const rejectedNotWhitelistedFields = Object.values(
-            data["rejected-fields"][key],
-          )
-            .flat()
-            .filter(
-              (fieldName) =>
-                !this.options.rejectionWhitelist.includes(fieldName as string),
-            );
-          // remove the key from rejected-fields object when the object has been whitelisted or all of its rejected fields are whitelisted
-          return (
-            !this.options.rejectionWhitelist.includes(key) &&
-            Boolean(rejectedNotWhitelistedFields.length)
-          );
-        },
-      );
-      if (checkedRejectedObjects.length || checkedRejectedFields.length) {
-        throw new SyncConflictError("The push was malformed", {
-          pushPayload: pushBody,
-          rejectedFields: data["rejected-fields"],
-          rejectedObjects: data["rejected-objects"],
-        });
-      }
-    }
-  }
-
-  async _syncPull(pullOptions?: { forcePullAll?: boolean }): Promise<void> {
-    if (!this.model) {
-      throw new Error("Model is not parsed yet");
-    }
-
-    const entityLastRevisions: Record<string, number> = {};
-
-    const entityNames = Object.keys(this.model.entities);
-
-    /**
-     * If forcePullAll is true, we want to pull all scoped data from the server, not just the changes.
-     */
-    if (pullOptions?.forcePullAll) {
-      entityNames.forEach((entityName) => {
-        entityLastRevisions[entityName] = 0;
-      });
-    } else {
-      const syncRevisions = await Promise.all(
-        entityNames.map(async (entityName) => {
-          const lastSyncRevisionEntity = await this.dao
-            .table<BaseEntity>(entityName)
-            .orderBy("syncRevision")
-            .last();
-          const lastSyncRevision: number | undefined =
-            lastSyncRevisionEntity?.syncRevision;
-          return [entityName, lastSyncRevision] as const;
-        }),
-      );
-
-      syncRevisions.forEach(([entityName, lastSyncRevision]) => {
-        entityLastRevisions[entityName] = lastSyncRevision
-          ? lastSyncRevision + 1
-          : 0;
-      });
-    }
-
-    const pullResponse = await this.makeServerRequest(
-      this.options.pullPath,
-      "POST",
-      {},
-      entityLastRevisions,
-    );
-    let body;
-    try {
-      body = await pullResponse.json();
-    } catch {
-      body = null;
-    }
-    if (pullResponse.status !== 200 || !body || !body.success) {
-      throw new DatabaseSyncError(
-        `Error while pushing data to server: ${pullResponse.status}`,
-        {
-          type: "pull",
-          code: body?.["error-code"] || -1,
-        },
-      );
-    }
-    const data = JSON.parse(body.data);
-
-    await this._monitoredBulkPut(data);
-  }
-
-  async sync(syncOptions?: {
-    skipPush?: boolean;
-    skipPull?: boolean;
-    forcePullAll?: boolean;
-  }): Promise<void> {
-    if (!this.store) {
-      throw new Error("Redux store is not set");
-    }
-
-    this.syncInProgress = true;
-    try {
-      if (!this.options.disablePush && !syncOptions?.skipPush) {
-        await this._syncPush();
-      }
-      if (!this.options.disablePull && !syncOptions?.skipPull) {
-        await this._syncPull(
-          syncOptions?.forcePullAll ? { forcePullAll: true } : undefined,
-        );
-      } else {
-        // disablePull flag can be set to true
-        // if the server responds with "Try again" while pushing data
-        this.options = {
-          ...this.options,
-          disablePull: false,
-        };
-      }
-
-      this.syncInProgress = false;
-      this.store.dispatch({
-        type: DATABASE_SYNC_FINISHED,
-      });
-    } catch (error) {
-      this.syncInProgress = false;
-      this.store.dispatch({
-        type: DATABASE_SYNC_ERROR,
-        payload: error,
-      });
-      throw error;
-    }
-  }
-
   async truncate(): Promise<void> {
     if (!this.model) {
       return;
@@ -622,21 +334,6 @@ export default class Database<
 
   setChangesFrozen(isFrozen: boolean) {
     this.isChangesFrozen = isFrozen;
-  }
-
-  /**
-   * @deprecated
-   */
-  reloadAllViewModels(): void {
-    if (!this.dao.isOpen() || !this.store) {
-      console.warn("Database still not opened, aborting reload");
-      return;
-    }
-    console.log(`VM reload count: ${this.registeredViewModels.size}`);
-    const { dispatch } = this.store;
-    this.registeredViewModels.forEach((viewModel) => {
-      viewModel.getReloadAction()(dispatch);
-    });
   }
 
   reloadChangedViewModels(changedObjectStores: Array<string>): void {
@@ -688,7 +385,7 @@ export default class Database<
         case DATABASE_INITIALIZED:
           return {
             ...initState,
-            status: "offline",
+            status: "online",
             hasVersionChanged: false,
           };
         case DATABASE_INITIALIZATION_ERROR:
@@ -696,12 +393,6 @@ export default class Database<
             ...initState,
             status: "uninitialized",
             error: action.payload,
-          };
-        case DATABASE_SYNC_FINISHED:
-          return {
-            ...state,
-            error: null,
-            status: "online",
           };
         case DATABASE_SYNC_ERROR:
           return {
