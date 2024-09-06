@@ -1,6 +1,6 @@
 {
   "name": "lc-ts-generator",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "CoreData model parser and Typescript generator",
   "keywords": [
     "CoreData",
