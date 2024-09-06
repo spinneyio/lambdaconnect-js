@@ -20,7 +20,7 @@
     "test": "vitest"
   },
   "author": "Piotr Ciarka",
-  "license": "EPL-2.0",
+  "license": "MIT",
   "devDependencies": {
     "@types/minimist": "^1.2.5",
     "@types/node": "^22.2.0",
