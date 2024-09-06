@@ -323,21 +323,41 @@ export default class Database<
         transaction: Transaction,
       ) => {
         // @ts-ignore added to Transaction object in `this._syncPull`
-        if (!transaction.__syncTransaction) {
-          if (!Object.keys(modifications).length) {
+        if (transaction.__syncTransaction) {
+          return undefined;
+        }
+
+        const entries = Object.entries(modifications);
+        // No modifications, no need to update
+        if (!entries.length) {
+          return undefined;
+        } else if (entries.every(([_, v]) => Array.isArray(v))) {
+          // If all modifications are relations (arrays), we need to compare them, if they are the same, we don't need to update
+          // e.g. modifications = { users: [1, 2, 3] }; obj = {users: [1, 2, 3], name: "John Doe"};
+          let isSignificantChange = false;
+          for (const [k, v] of entries) {
+            const org = (obj as any)[k];
+            if (
+              v.length !== org.length ||
+              !v.every((el: any) => org.includes(el))
+            ) {
+              isSignificantChange = true;
+              break;
+            }
+          }
+          if (!isSignificantChange) {
             return undefined;
           }
-          return {
-            // @ts-ignore `__isSuitableForPush` can be added to add object without pushing it to the remote db
-            isSuitableForPush: modifications.__isSuitableForPush === 0 ? 0 : 1,
-            __isSuitableForPush: undefined,
-            updatedAt: new Date().toISOString(),
-            active:
-              typeof modifications.active === "number"
-                ? modifications.active
-                : 1,
-          };
         }
+
+        return {
+          // @ts-ignore `__isSuitableForPush` can be added to add object without pushing it to the remote db
+          isSuitableForPush: modifications.__isSuitableForPush === 0 ? 0 : 1,
+          __isSuitableForPush: undefined,
+          updatedAt: new Date().toISOString(),
+          active:
+            typeof modifications.active === "number" ? modifications.active : 1,
+        };
       };
 
       for (const entityName of Object.keys(this.model.entities)) {
