@@ -93,7 +93,10 @@ export const ent2Schema = z.object({
   numberAttr: z.number().min(1).optional(),
   dateAttr: z.date().optional(),
   testRel1: z.string().uuid().array().length(1).optional(), // ent1
-});\n\n`;
+});
+
+export type ent1 = z.infer<typeof ent1Schema>;
+export type ent2 = z.infer<typeof ent2Schema>;\n\n`;
 
     expect(generateZodFileFromIr(testIr)).toEqual(expectedZodSchemaFile);
   });

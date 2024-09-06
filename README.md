@@ -37,9 +37,9 @@ Output options:
 ### Example
 
 ```
-  cat model.xml | npx lc-ts-generator --stdin --zod --out-path ./zodSchemas.ts
-  npx lc-ts-generator --in-path ./model.xml --out-path ./types/index.ts
-  npx lc-ts-generator --in-path ./model.xml --std-out
+cat model.xml | npx lc-ts-generator --stdin --zod --out-path ./zodSchemas.ts
+npx lc-ts-generator --in-path ./model.xml --out-path ./types/index.ts
+npx lc-ts-generator --in-path ./model.xml --std-out
 ```
 
 Running `lc-ts-generator` on
@@ -77,6 +77,8 @@ export const UserSchema = {
   name: z.string().min(1).max(100).optional(),
   clients: z.string().uuid().array().optional() // Client,
 };
+
+export type User = z.infer<typeof UserSchema>;
 ```
 
 or `types.ts`
@@ -100,7 +102,7 @@ export type User = {
 
 ## License
 
-Copyright © 2022-2024 Spinney
+Copyright © 2024 Spinney
 
 This program and the accompanying materials are made available under the
 terms of the Eclipse Public License 2.0 which is available at

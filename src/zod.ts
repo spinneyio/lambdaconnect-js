@@ -76,5 +76,11 @@ export default function generateZodFileFromIr(ir: IR) {
     fileString += `});\n\n`;
   });
 
+  ir.forEach((entity) => {
+    fileString += `export type ${entity.name} = z.infer<typeof ${entity.name}Schema>;\n`;
+  });
+
+  fileString += `\n`;
+
   return fileString;
 }
