@@ -4,6 +4,8 @@ CoreData model parser and Typescript generator. Allows for generating Typescript
 
 ## Installation
 
+Requires node >= 18
+
 Run
 
 `npm install spinneyio/lambdaconnect-js --save-dev`
