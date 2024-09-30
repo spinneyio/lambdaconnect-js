@@ -83,7 +83,7 @@ export default function generateZodFileFromIr(ir: IR) {
 
   fileString += `export type EntityMap = {\n`;
   ir.forEach((entity) => {
-    fileString += `  ${entity.name}: ${entity.name},\n`;
+    fileString += `  ${entity.name}: ${entity.name};\n`;
   });
   fileString += `};\n`;
 
