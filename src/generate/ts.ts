@@ -37,5 +37,11 @@ export default function generateTypescriptDefinitionFileFromIr(ir: IR) {
     fileString += `};\n\n`;
   });
 
+  fileString += `export type EntityMap = {\n`;
+  ir.forEach((entity) => {
+    fileString += `  ${entity.name}: ${entity.name},\n`;
+  });
+  fileString += `};\n`;
+
   return fileString;
 }

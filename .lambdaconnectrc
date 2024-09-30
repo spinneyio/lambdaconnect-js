@@ -1,0 +1,10 @@
+{
+  "url": "https://api.snoozer.spinney.io/api/v1/sync/data-model",
+  "generate": {
+    "output": "zod",
+    "outPath": "./modelSchema.ts"
+  },
+  "fetch": {
+    "outPath": "./model.xml"
+  }
+}

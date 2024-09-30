@@ -1,5 +1,8 @@
 import { describe, expect, it, test } from "vitest";
-import getIRFromXmlString, { Attribute, Constraint } from "../src/ir.ts";
+import getIRFromXmlString, {
+  Attribute,
+  Constraint,
+} from "../src/generate/ir.ts";
 
 const modelFragmentXmlString = `
 <model>

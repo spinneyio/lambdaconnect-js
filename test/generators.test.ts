@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
-import { IR } from "../src/ir.ts";
-import generateZodFileFromIr from "../src/zod.ts";
-import generateTypescriptDefinitionFileFromIr from "../src/ts.ts";
+import { IR } from "../src/generate/ir.ts";
+import generateZodFileFromIr from "../src/generate/zod.ts";
+import generateTypescriptDefinitionFileFromIr from "../src/generate/ts.ts";
 
 const testIr: IR = [
   {

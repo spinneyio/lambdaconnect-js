@@ -1,22 +1,16 @@
-import minimist from "minimist";
 import path from "node:path";
 import { readFileSync } from "node:fs";
 import { createInterface } from "node:readline";
+import { Config } from "../config.ts";
+import { fetchModelString } from "../fetch/fetch.ts";
 
-export default async function input(
-  argv: minimist.ParsedArgs,
-): Promise<string> {
+export default async function input(config: Config): Promise<string> {
   // --in-path <path>
-  if (argv["in-path"]) {
-    const relativePathToXmlFile = argv["in-path"];
+  if (config.generate.inPath) {
+    const relativePathToXmlFile = config.generate.inPath;
 
     if (!relativePathToXmlFile) {
       console.log("No path provided");
-      process.exit(1);
-    }
-
-    if (typeof relativePathToXmlFile !== "string") {
-      console.log("Path must be a string");
       process.exit(1);
     }
 
@@ -32,7 +26,7 @@ export default async function input(
   }
 
   // --stdin
-  if (argv.stdin) {
+  if (config.generate.stdin) {
     const rl = createInterface({
       input: process.stdin,
     });
@@ -47,6 +41,11 @@ export default async function input(
         resolve(xmlString);
       });
     });
+  }
+
+  // --url
+  if (config.generate.url) {
+    return fetchModelString(config.generate.url);
   }
 
   console.log("Invalid input options. See --help");

@@ -1,23 +1,23 @@
-import minimist from "minimist";
 import * as fs from "node:fs";
+import { Config } from "../config.ts";
 
-export default function output(argv: minimist.ParsedArgs, fileString: string) {
-  const type = argv.zod ? "zod" : "ts";
+export default function output(config: Config, fileString: string) {
+  const type = config.generate.output;
 
-  if (argv["out-path"]) {
-    fs.writeFileSync(argv["out-path"], fileString);
+  if (config.generate.outPath) {
+    fs.writeFileSync(config.generate.outPath, fileString);
 
     console.log(
       "Successfully written " +
         (type === "zod" ? "zod schema" : "Typescript type") +
         " definitions to " +
-        argv["out-path"] +
+        config.generate.outPath +
         " ✨",
     );
     process.exit(0);
   }
 
-  if (argv.stdout) {
+  if (config.generate.stdout) {
     process.stdout.write(fileString + "\n");
     process.exit(0);
   }

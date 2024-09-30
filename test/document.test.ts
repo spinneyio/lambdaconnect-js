@@ -1,6 +1,6 @@
 import { it, expect, describe, test } from "vitest";
-import document from "../src/document.ts";
-import { Constraint } from "../src/ir.ts";
+import document from "../src/generate/document.ts";
+import { Constraint } from "../src/generate/ir.ts";
 
 describe("generating entity documentation", () => {
   it("no documentation generates empty string", () => {
