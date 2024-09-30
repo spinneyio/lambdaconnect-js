@@ -1,6 +1,6 @@
 {
-  "name": "lc-ts-generator",
-  "version": "0.2.1",
+  "name": "lc-cli",
+  "version": "0.3.0",
   "description": "CoreData model parser and Typescript generator",
   "keywords": [
     "CoreData",
@@ -16,7 +16,7 @@
   "bin": "dist/index.js",
   "scripts": {
     "lint": "tsc",
-    "build": "tsup src/index.ts --format esm --dts",
+    "build": "tsup src/index.ts --format esm",
     "test": "vitest"
   },
   "author": "Piotr Ciarka",
