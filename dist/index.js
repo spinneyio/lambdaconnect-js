@@ -405,6 +405,15 @@ function generateZodFileFromIr(ir) {
 
 `;
   });
+  fileString += `export const SchemaMap = {
+`;
+  ir.forEach((entity) => {
+    fileString += `  ${entity.name}: ${entity.name}Schema,
+`;
+  });
+  fileString += `};
+
+`;
   ir.forEach((entity) => {
     fileString += `export type ${entity.name} = z.infer<typeof ${entity.name}Schema>;
 `;
@@ -414,7 +423,7 @@ function generateZodFileFromIr(ir) {
   fileString += `export type EntityMap = {
 `;
   ir.forEach((entity) => {
-    fileString += `  ${entity.name}: ${entity.name},
+    fileString += `  ${entity.name}: ${entity.name};
 `;
   });
   fileString += `};
@@ -459,7 +468,7 @@ function generateTypescriptDefinitionFileFromIr(ir) {
   fileString += `export type EntityMap = {
 `;
   ir.forEach((entity) => {
-    fileString += `  ${entity.name}: ${entity.name},
+    fileString += `  ${entity.name}: ${entity.name};
 `;
   });
   fileString += `};
@@ -545,6 +554,9 @@ if (argv.help) {
   Fetch options:
     --url <url>         Fetch model from given endpoint
     --out-path <path>   Write generated file to given path
+    
+  e.g.
+  lc-cli fetch --url http://api-url.com/api/v1/data-model --out-path ./resources/current.xml
     
   Generate options:
     Input options:
