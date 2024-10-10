@@ -398,7 +398,7 @@ function generateZodFileFromIr(ir) {
     });
     entity.relations.forEach((rel) => {
       fileString += document(rel, 2);
-      fileString += `  ${rel.name}: z.string().uuid().array()${rel.toMany ? "" : ".length(1)"}.optional(), // ${rel.destinationEntity}
+      fileString += `  ${rel.name}: z.string().uuid()${rel.toMany ? ".array()" : ""}.optional(), // ${rel.destinationEntity}
 `;
     });
     fileString += `});
@@ -458,7 +458,7 @@ function generateTypescriptDefinitionFileFromIr(ir) {
     });
     entity.relations.forEach((rel) => {
       fileString += document(rel, 2);
-      fileString += `  ${rel.name}?: Array<string>, // ${rel.destinationEntity}
+      fileString += `  ${rel.name}?: ${rel.toMany ? "Array<string>" : "string"}, // ${rel.destinationEntity}
 `;
     });
     fileString += `};

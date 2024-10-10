@@ -31,7 +31,7 @@ export default function generateTypescriptDefinitionFileFromIr(ir: IR) {
     entity.relations.forEach((rel) => {
       fileString += document(rel, 2);
 
-      fileString += `  ${rel.name}?: Array<string>, // ${rel.destinationEntity}\n`;
+      fileString += `  ${rel.name}?: ${rel.toMany ? "Array<string>" : "string"}, // ${rel.destinationEntity}\n`;
     });
 
     fileString += `};\n\n`;

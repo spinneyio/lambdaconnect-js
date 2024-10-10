@@ -92,11 +92,21 @@ export const ent1Schema = z.object({
 export const ent2Schema = z.object({
   numberAttr: z.number().min(1).optional(),
   dateAttr: z.date().optional(),
-  testRel1: z.string().uuid().array().length(1).optional(), // ent1
+  testRel1: z.string().uuid().optional(), // ent1
 });
 
+export const SchemaMap = {
+  ent1: ent1Schema,
+  ent2: ent2Schema,
+};
+
 export type ent1 = z.infer<typeof ent1Schema>;
-export type ent2 = z.infer<typeof ent2Schema>;\n\n`;
+export type ent2 = z.infer<typeof ent2Schema>;
+
+export type EntityMap = {
+  ent1: ent1;
+  ent2: ent2;
+};\n`;
 
     expect(generateZodFileFromIr(testIr)).toEqual(expectedZodSchemaFile);
   });
@@ -124,8 +134,13 @@ export type ent2 = {
    */
   numberAttr?: number,
   dateAttr?: Date,
-  testRel1?: Array<string>, // ent1
-};\n\n`;
+  testRel1?: string, // ent1
+};
+
+export type EntityMap = {
+  ent1: ent1;
+  ent2: ent2;
+};\n`;
 
     expect(generateTypescriptDefinitionFileFromIr(testIr)).toEqual(
       expectedZodSchemaFile,

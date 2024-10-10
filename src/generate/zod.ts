@@ -70,7 +70,7 @@ export default function generateZodFileFromIr(ir: IR) {
     entity.relations.forEach((rel) => {
       fileString += document(rel, 2);
 
-      fileString += `  ${rel.name}: z.string().uuid().array()${rel.toMany ? "" : ".length(1)"}.optional(), // ${rel.destinationEntity}\n`;
+      fileString += `  ${rel.name}: z.string().uuid()${rel.toMany ? ".array()" : ""}.optional(), // ${rel.destinationEntity}\n`;
     });
 
     fileString += `});\n\n`;
