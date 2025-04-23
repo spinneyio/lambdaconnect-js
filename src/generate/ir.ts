@@ -34,6 +34,24 @@ function isRegexEnumRegex(regex: string): boolean {
   );
 }
 
+function getStringEnum(obj: any): string[] | null {
+  if (!obj.userInfo?.entry) {
+    return null;
+  }
+
+  if (Array.isArray(obj.userInfo.entry)) {
+    const value = obj.userInfo.entry.find((e: any) => e?.key === "enum")?.value;
+    return value ? parseStringEnum(value) : null;
+  }
+
+  if (obj.userInfo?.entry?.key === "enum") {
+    const value = obj.userInfo.entry?.value;
+    return value ? parseStringEnum(value) : null;
+  }
+
+  return null;
+}
+
 function javaRegexToJsRegex(regexString: string) {
   return regexString.replace("\\p{XDigit}", "[0-9A-Fa-f]");
 }
@@ -42,6 +60,10 @@ function parseRegexEnum(regex: string): Array<string> {
   const [_, withoutStart = ""] = regex.split("(");
   const [withoutEnd = ""] = withoutStart.split(")");
   return withoutEnd.split("|");
+}
+
+function parseStringEnum(s: string) {
+  return s.split("|");
 }
 
 function getDocumentation(obj: any): string | null {
@@ -186,6 +208,25 @@ export default function getIRFromXmlString(xml: string): IR {
         // ugly cast
         const modelType = attr.attributeType as keyof typeof modelTypeToTsType;
         const type = modelTypeToTsType[modelType];
+
+        if (type === "string") {
+          const stringRegex = getStringEnum(attr);
+          if (stringRegex) {
+            return {
+              type: "enum",
+              name: attr.name,
+              docs: docs,
+              deprecated: deprecationStatus,
+              constraints: [
+                {
+                  kind: "enum",
+                  value: stringRegex,
+                },
+                ...(isOptional ? [] : [{ kind: "required" } as const]),
+              ],
+            } satisfies Attribute;
+          }
+        }
 
         const constraints: Array<Constraint> = [];
 
